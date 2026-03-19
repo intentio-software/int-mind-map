@@ -1,0 +1,558 @@
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mindmap-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: grab;
+  --bg-start: #03182d;
+  --bg-end: #010c16;
+  --node-fill: rgba(6, 42, 68, 0.92);
+  --node-stroke: rgba(240, 95, 54, 0.42);
+  --node-text: #f5f7fb;
+  --edge-color: rgba(255, 255, 255, 0.22);
+  --input-bg: rgba(2, 17, 30, 0.92);
+  --accent: #f05f36;
+  --brand-blue: #062a44;
+  --brand-orange: #f05f36;
+}
+
+.mindmap-container.light-mode {
+  --bg-start: #f2f6fb;
+  --bg-end: #d0e4f5;
+  --node-fill: #ffffff;
+  --node-stroke: rgba(6, 42, 68, 0.25);
+  --node-text: #062a44;
+  --edge-color: rgba(6, 42, 68, 0.3);
+  --input-bg: rgba(255, 255, 255, 0.94);
+  --accent: #f05f36;
+}
+
+.mindmap-container.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.mindmap-canvas {
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(
+    circle at top,
+    var(--bg-start),
+    var(--bg-end) 80%
+  );
+  transition: background 0.3s ease;
+}
+
+.edges path.edge {
+  stroke: var(--edge-color);
+  stroke-width: 2;
+  stroke-linecap: round;
+  fill: none;
+  transition: all 0.2s ease;
+}
+
+.node {
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.node rect {
+  fill: var(--node-fill);
+  stroke: var(--node-stroke);
+  stroke-width: 2;
+  filter: drop-shadow(0 10px 26px rgba(0, 0, 0, 0.4));
+  transition: all 0.2s ease;
+}
+
+.node.selected rect {
+  stroke: var(--accent);
+  stroke-width: 3;
+  filter: drop-shadow(0 14px 30px rgba(240, 95, 54, 0.35));
+}
+
+.node-branch-indicator {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.node-branch-indicator circle {
+  fill: var(--node-fill);
+  stroke: var(--accent);
+  stroke-width: 2;
+  transition:
+    stroke 0.2s ease,
+    fill 0.2s ease;
+}
+
+.node-branch-indicator line {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.node.collapsed rect {
+  stroke-dasharray: 10 6;
+}
+
+.node-label,
+.node-input-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  text-align: center;
+  font-family: "Inter", "SF Pro Display", system-ui, sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: var(--node-text);
+}
+
+.node-label {
+  font-weight: 500;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.node-input-wrapper {
+  background: var(--input-bg);
+  border-radius: 18px;
+  transition: background 0.2s ease;
+  padding: 4px 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.node-input {
+  width: 100%;
+  height: auto;
+  background: transparent;
+  border: none;
+  color: var(--node-text);
+  font-size: 1rem;
+  font-family: "Inter", sans-serif;
+  text-align: center;
+  outline: none;
+  resize: none;
+  line-height: 1.35;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  cursor: text;
+  align-self: center;
+  min-height: 1.35em;
+}
+
+.top-bar {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  column-gap: 12px;
+  row-gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: linear-gradient(
+    135deg,
+    rgba(6, 42, 68, 0.9),
+    rgba(12, 73, 108, 0.85)
+  );
+  backdrop-filter: blur(6px);
+  color: #fff;
+  z-index: 2200;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.mindmap-container.light-mode .top-bar {
+  color: #fdfdfd;
+  background: linear-gradient(
+    135deg,
+    rgba(6, 42, 68, 0.85),
+    rgba(8, 56, 92, 0.8)
+  );
+}
+
+.map-title {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  min-width: 180px;
+}
+
+.map-title .pi {
+  color: var(--brand-orange);
+}
+
+.unsaved-indicator {
+  color: var(--brand-orange);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.top-bar-menu {
+  position: relative;
+  margin-left: 4px;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.menu-button.open {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 220px;
+  background: rgba(6, 42, 68, 0.92);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  padding: 8px 0;
+  z-index: 2600;
+  backdrop-filter: blur(12px);
+}
+
+.mindmap-container.light-mode .menu-dropdown {
+  background: rgba(6, 42, 68, 0.85);
+}
+
+.menu-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  text-align: left;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.menu-item:hover {
+  background: var(--brand-orange);
+  color: #0a1d2e;
+}
+
+.menu-item.disabled {
+  opacity: 0.6;
+  cursor: default;
+  pointer-events: none;
+}
+
+.menu-item.disabled:hover {
+  background: transparent;
+  color: inherit;
+}
+
+.menu-subheading {
+  padding: 6px 16px 2px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.menu-separator {
+  height: 1px;
+  margin: 6px 0;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.menu-item.has-submenu {
+  position: relative;
+}
+
+.menu-item.has-submenu .submenu {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 4px);
+  min-width: 220px;
+  background: rgba(6, 42, 68, 0.95);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  padding: 8px 0;
+}
+
+.mindmap-container.light-mode .menu-item.has-submenu .submenu {
+  background: rgba(6, 42, 68, 0.85);
+}
+
+.menu-item.has-submenu .submenu .menu-item {
+  white-space: nowrap;
+  color: #ffffff;
+}
+
+.menu-item.has-submenu .submenu .menu-item:hover {
+  color: #ffffff;
+  background: rgba(240, 95, 54, 0.85);
+}
+
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.map-action,
+.theme-toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.map-action:hover,
+.theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.45);
+  transform: translateY(-1px);
+}
+
+.map-action.about-button {
+  font-size: 1rem;
+}
+
+.theme-toggle {
+  margin-left: 8px;
+}
+
+.pill-button {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.15);
+  color: inherit;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.mindmap-container.light-mode .pill-button {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fdfdfd;
+}
+
+.pill-button:focus-visible {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 0 3px rgba(240, 95, 54, 0.35);
+}
+
+.menu-button {
+  min-width: 76px;
+  justify-content: space-between;
+}
+
+.menu-button i {
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.theme-preference-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.theme-indicator {
+  cursor: default;
+  user-select: none;
+  min-width: 110px;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.theme-indicator i {
+  font-size: 0.85rem;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.about-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  animation: fadeIn 0.2s ease;
+}
+
+.about-dialog {
+  position: relative;
+  width: min(420px, calc(100% - 32px));
+  padding: 32px 24px 24px;
+  border-radius: 16px;
+  background: linear-gradient(
+    135deg,
+    rgba(6, 42, 68, 0.95),
+    rgba(12, 73, 108, 0.9)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+.mindmap-container.light-mode .about-dialog {
+  background: linear-gradient(
+    135deg,
+    rgba(6, 42, 68, 0.9),
+    rgba(10, 58, 92, 0.85)
+  );
+}
+
+.about-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform: translate(50%, -50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.about-header {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.about-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.about-title-group h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.about-title-group p {
+  margin: 2px 0 0;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
+.about-body {
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.about-body p {
+  margin-bottom: 12px;
+}
+
+.about-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #ffd6c9;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.about-link:hover {
+  color: #fff;
+}
+
+.export-toast {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(6, 42, 68, 0.95);
+  color: #fff;
+  border-radius: 999px;
+  padding: 10px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  z-index: 3200;
+  font-size: 0.9rem;
+  animation: fadeIn 0.2s ease;
+}
+
+.mindmap-container.light-mode .export-toast {
+  background: rgba(6, 42, 68, 0.9);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.hidden-input {
+  display: none;
+}

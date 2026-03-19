@@ -1,0 +1,310 @@
+<div
+  #canvasWrapper
+  class="mindmap-container"
+  [class.dragging]="isDragging()"
+  [class.light-mode]="theme() === 'light'"
+  (click)="onCanvasClick($event)"
+  (mousedown)="onCanvasPointerDown($event)"
+  (wheel)="onWheel($event)"
+>
+  <div class="top-bar" (click)="closeMenus()">
+    <div class="map-title">
+      <i class="pi pi-sitemap" aria-hidden="true"></i>
+      <span>{{ displayedMapName() }}</span>
+      <span class="unsaved-indicator" *ngIf="!isSaved()">•</span>
+    </div>
+    <div class="top-bar-menu" (click)="$event.stopPropagation()">
+      <div class="menu file-menu">
+        <button
+          type="button"
+          class="menu-button pill-button"
+          [class.open]="fileMenuOpen()"
+          (click)="toggleFileMenu($event)"
+        >
+          <span>File</span>
+          <i class="pi pi-angle-down" aria-hidden="true"></i>
+        </button>
+        <div class="menu-dropdown" *ngIf="fileMenuOpen()">
+          <button type="button" class="menu-item" (click)="handleNewMap()">
+            New
+          </button>
+          <button type="button" class="menu-item" (click)="triggerOpenDialog()">
+            Open…
+          </button>
+          <div class="menu-subheading">Open Recent</div>
+          <ng-container *ngIf="recentMaps().length; else noRecent">
+            <button
+              type="button"
+              class="menu-item"
+              *ngFor="let recent of recentMaps(); trackBy: trackRecent"
+              (click)="openRecentMap(recent)"
+            >
+              {{ recent.name }}
+            </button>
+          </ng-container>
+          <ng-template #noRecent>
+            <div class="menu-item disabled">No recent maps</div>
+          </ng-template>
+          <div class="menu-separator"></div>
+          <button type="button" class="menu-item" (click)="handleSave()">
+            Save
+          </button>
+          <button type="button" class="menu-item" (click)="handleSaveAs()">
+            Save As…
+          </button>
+          <div class="menu-separator"></div>
+          <div
+            class="menu-item has-submenu"
+            (mouseenter)="openExportMenu()"
+            (mouseleave)="closeExportMenu()"
+            (click)="toggleExportMenu($event)"
+          >
+            <span>Export ▸</span>
+            <div class="submenu" *ngIf="exportMenuOpen()">
+              <button
+                type="button"
+                class="menu-item"
+                (click)="exportJsonFromMenu()"
+              >
+                Export as JSON
+              </button>
+              <button
+                type="button"
+                class="menu-item"
+                (click)="exportSvgFromMenu()"
+              >
+                Export as SVG
+              </button>
+              <button
+                type="button"
+                class="menu-item"
+                (click)="exportFreeplaneFromMenu()"
+              >
+                Export as Freeplane (.mm)
+              </button>
+              <button
+                type="button"
+                class="menu-item"
+                (click)="exportPngFromMenu()"
+              >
+                Export as PNG (transparent)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="top-bar-actions">
+      <button
+        type="button"
+        class="map-action"
+        aria-label="Center view"
+        (click)="centerCurrentSelection()"
+      >
+        <i
+          class="pi pi-arrow-down-left-and-arrow-up-right-to-center"
+          aria-hidden="true"
+        ></i>
+      </button>
+      <button
+        type="button"
+        class="map-action"
+        aria-label="Fit to screen"
+        (click)="fitToScreen()"
+      >
+        <i class="pi pi-expand" aria-hidden="true"></i>
+      </button>
+      <div class="theme-preference-control" role="status" aria-live="polite">
+        <span class="sr-only">Theme preference</span>
+        <div class="theme-indicator pill-button">
+          <i
+            class="pi"
+            [ngClass]="
+              themePreference() === 'system'
+                ? 'pi-desktop'
+                : theme() === 'dark'
+                  ? 'pi-moon'
+                  : 'pi-sun'
+            "
+          ></i>
+          <span>{{ themePreferenceLabel() }}</span>
+        </div>
+      </div>
+      <button
+        type="button"
+        class="theme-toggle"
+        [attr.aria-label]="themeAriaLabel()"
+        (click)="toggleTheme()"
+      >
+        <i
+          class="pi"
+          [ngClass]="
+            themePreference() === 'system'
+              ? 'pi-desktop'
+              : theme() === 'dark'
+                ? 'pi-moon'
+                : 'pi-sun'
+          "
+        ></i>
+      </button>
+      <button
+        type="button"
+        class="map-action about-button"
+        aria-label="About Intentio Mind Map"
+        aria-haspopup="dialog"
+        [attr.aria-expanded]="aboutDialogOpen()"
+        aria-controls="about-dialog"
+        (click)="toggleAboutDialog()"
+      >
+        <i class="pi pi-info-circle" aria-hidden="true"></i>
+      </button>
+    </div>
+  </div>
+
+  <svg
+    #svgCanvas
+    class="mindmap-canvas"
+    [attr.width]="canvasSize().width"
+    [attr.height]="canvasSize().height"
+    (mouseleave)="onCanvasPointerLeave()"
+  >
+    <g [attr.transform]="viewTransform()">
+      <g class="edges">
+        <path
+          *ngFor="let edge of layout().edges; trackBy: trackEdge"
+          class="edge"
+          [attr.d]="edgePath(edge)"
+        />
+      </g>
+
+      <g class="nodes">
+        <g
+          *ngFor="let item of layout().nodes; trackBy: trackNode"
+          class="node"
+          [class.selected]="item.id === selectedNodeId()"
+          [class.collapsed]="item.node.collapsed"
+          [attr.transform]="nodeTransform(item)"
+          (click)="onNodeClick($event, item.id)"
+          (dblclick)="beginEditing(item.id)"
+        >
+          <rect
+            [attr.width]="nodeWidth"
+            [attr.height]="nodeHeightFor(item.node)"
+            rx="18"
+            ry="18"
+          ></rect>
+          <g
+            *ngIf="item.node.children.length > 0 && item.node.collapsed"
+            class="node-branch-indicator"
+            (click)="onCollapseIndicatorClick($event, item.id)"
+          >
+            <circle
+              [attr.cx]="nodeWidth - 10"
+              [attr.cy]="nodeHeightFor(item.node) / 2"
+              r="10"
+            ></circle>
+            <line
+              [attr.x1]="nodeWidth - 16"
+              [attr.x2]="nodeWidth - 4"
+              [attr.y1]="nodeHeightFor(item.node) / 2"
+              [attr.y2]="nodeHeightFor(item.node) / 2"
+            ></line>
+          </g>
+
+          <foreignObject
+            [attr.width]="nodeWidth"
+            [attr.height]="nodeHeightFor(item.node)"
+          >
+            <ng-container *ngIf="editingNodeId() === item.id; else nodeLabel">
+              <div class="node-input-wrapper">
+                <textarea
+                  #nodeInput
+                  class="node-input"
+                  [attr.data-node-id]="item.id"
+                  [value]="item.node.content"
+                  (input)="onNodeInput(item.id, $any($event.target).value)"
+                  (keydown)="handleInlineInputKey($event)"
+                  autocomplete="off"
+                  spellcheck="false"
+                  rows="1"
+                  wrap="soft"
+                ></textarea>
+              </div>
+            </ng-container>
+            <ng-template #nodeLabel>
+              <div class="node-label">
+                {{ item.node.content || "" }}
+              </div>
+            </ng-template>
+          </foreignObject>
+        </g>
+      </g>
+    </g>
+  </svg>
+
+  <input
+    #importInput
+    type="file"
+    accept="application/json"
+    class="hidden-input"
+    (change)="handleImport($event)"
+  />
+
+  <div
+    class="about-backdrop"
+    *ngIf="aboutDialogOpen(); else noop"
+    (click)="closeAboutDialog()"
+  >
+    <div
+      id="about-dialog"
+      class="about-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="aboutDialogTitle"
+      aria-describedby="aboutDialogBody"
+      (click)="$event.stopPropagation()"
+    >
+      <button
+        type="button"
+        class="about-close"
+        aria-label="Close about dialog"
+        (click)="closeAboutDialog()"
+      >
+        <i class="pi pi-times" aria-hidden="true"></i>
+      </button>
+      <div class="about-header">
+        <img
+          src="assets/intentio-logo.png"
+          alt="Intentio logo"
+          class="about-logo"
+        />
+        <div class="about-title-group">
+          <h2 id="aboutDialogTitle">Intentio Mind Map</h2>
+          <p>Craft ideas with focus and flow.</p>
+        </div>
+      </div>
+      <div id="aboutDialogBody" class="about-body">
+        <p>
+          Intentio helps you capture strategy, story arcs, and product plans
+          visually. Export mind maps, switch themes, and stay immersed in the
+          canvas.
+        </p>
+        <a
+          class="about-link"
+          href="https://intentiosoftware.com"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          intentiosoftware.com
+          <i class="pi pi-arrow-up-right" aria-hidden="true"></i>
+        </a>
+      </div>
+    </div>
+  </div>
+  <ng-template #noop></ng-template>
+
+  <div class="export-toast" *ngIf="exportNotice() as notice">
+    <i class="pi pi-check-circle" aria-hidden="true"></i>
+    <span>{{ notice }}</span>
+  </div>
+</div>
