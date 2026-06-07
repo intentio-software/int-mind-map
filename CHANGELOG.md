@@ -1,3 +1,15 @@
+# [1.2.0](https://github.com/intentio-software/int-mind-map/compare/v1.1.2...v1.2.0) (2026-06-07)
+
+
+### Bug Fixes
+
+* switch build trigger to repository_dispatch and add PrimeNG theme ([fcbfad8](https://github.com/intentio-software/int-mind-map/commit/fcbfad824111497949577afb42baea782ccd2b3c))
+
+
+### Features
+
+* provide primeNG and update build and release workflows to support repository dispatch and improve tagging ([62cb4d5](https://github.com/intentio-software/int-mind-map/commit/62cb4d5efeb3bfe22328a351f0b5fe6e5415a5ce))
+
 ## [1.1.2](https://github.com/intentio-software/int-mind-map/compare/v1.1.1...v1.1.2) (2026-06-07)
 
 
