@@ -53,14 +53,21 @@ jobs:
 
       - run: npm ci
 
+      - name: Get release ID
+        id: release
+        run: |
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases \
+            --jq '.[] | select(.tag_name=="${{ github.ref_name }}") | .id' | head -1)
+          echo "id=$RELEASE_ID" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ steps.release.outputs.id }}
           args: ${{ matrix.args }}
 
   publish:
