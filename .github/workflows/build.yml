@@ -1,9 +1,8 @@
 name: Build
 
 on:
-  push:
-    tags:
-      - 'v*'
+  repository_dispatch:
+    types: [tauri-build]
 
 jobs:
   build:
@@ -27,6 +26,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.tag }}
 
       - uses: actions/setup-node@v4
         with:
@@ -56,14 +57,16 @@ jobs:
       - name: Get or create draft release
         id: release
         run: |
+          TAG=${{ github.event.client_payload.tag }}
           RELEASE_ID=$(gh api repos/${{ github.repository }}/releases \
-            --jq '.[] | select(.tag_name=="${{ github.ref_name }}") | .id' | head -1)
+            --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -1)
           if [ -z "$RELEASE_ID" ]; then
-            RELEASE_ID=$(gh release create ${{ github.ref_name }} \
-              --draft --title "${{ github.ref_name }}" --generate-notes \
+            RELEASE_ID=$(gh release create $TAG \
+              --draft --title "$TAG" --generate-notes \
               --json id --jq '.id')
           fi
           echo "id=$RELEASE_ID" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -89,14 +92,15 @@ jobs:
           node-version: '20'
 
       - name: Generate latest.json from release .sig files
-        run: node scripts/generate-update-json.js ${{ github.ref_name }}
+        run: node scripts/generate-update-json.js ${{ github.event.client_payload.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
 
       - name: Upload latest.json and publish release
         run: |
-          gh release upload ${{ github.ref_name }} latest.json --clobber
-          gh release edit ${{ github.ref_name }} --draft=false
+          TAG=${{ github.event.client_payload.tag }}
+          gh release upload $TAG latest.json --clobber
+          gh release edit $TAG --draft=false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

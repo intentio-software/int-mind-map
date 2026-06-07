@@ -15,8 +15,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Use a PAT so the version-bump commit + tag can trigger the build workflow.
-          # GITHUB_TOKEN pushes are intentionally blocked from triggering other workflows.
           token: ${{ secrets.RELEASE_PAT }}
 
       - uses: actions/setup-node@v4
@@ -26,6 +24,28 @@ jobs:
 
       - run: npm ci
 
+      - name: Record latest tag before release
+        id: pre
+        run: |
+          git fetch --tags
+          echo "tag=$(git tag --sort=-v:refname | head -1)" >> $GITHUB_OUTPUT
+
       - run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+
+      - name: Trigger build if new release was created
+        run: |
+          git fetch --tags
+          NEW_TAG=$(git tag --sort=-v:refname | head -1)
+          if [ "$NEW_TAG" != "${{ steps.pre.outputs.tag }}" ] && [ -n "$NEW_TAG" ]; then
+            echo "New release: $NEW_TAG — triggering build"
+            gh api repos/${{ github.repository }}/dispatches \
+              --method POST \
+              -f event_type=tauri-build \
+              -f "client_payload[tag]=$NEW_TAG"
+          else
+            echo "No new release, skipping build."
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
