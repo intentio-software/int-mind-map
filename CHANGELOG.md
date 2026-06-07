@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/intentio-software/int-mind-map/compare/v1.1.0...v1.1.1) (2026-06-07)
+
+
+### Bug Fixes
+
+* update release ID retrieval in build workflow and bump version to 1.1.0 ([74eae69](https://github.com/intentio-software/int-mind-map/commit/74eae691816dd63a8de89ca4f94b8a8bc46c3280))
+
 # [1.1.0](https://github.com/intentio-software/int-mind-map/compare/v1.0.0...v1.1.0) (2026-06-07)
 
 
