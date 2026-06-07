@@ -11,9 +11,11 @@ import {
   ViewChildren,
   computed,
   effect,
+  inject,
   signal,
   untracked
 } from "@angular/core";
+import { UpdaterService } from "./services/updater.service";
 import JSZip from "jszip";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
@@ -145,7 +147,7 @@ const DEFAULT_MAP_NAME = "Untitled Mind Map";
 const RECENT_LIMIT = 5;
 const EXPORT_FONT_SIZE = 12;
 const EXPORT_LINE_HEIGHT = 16;
-const APP_VERSION = "v0.1.0";
+const APP_VERSION_FALLBACK = "v0.1.0";
 const COMMANDS: Record<string, () => string> = {
   "/date": () => new Date().toLocaleDateString(),
   "/time": () => new Date().toLocaleTimeString(),
@@ -186,7 +188,6 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly displayedMapName = computed(
     () => this.mapName() || this.mapTitleText()
   );
-  readonly appVersion = APP_VERSION;
   readonly licensingNotice =
     "Free for personal use – commercial license coming soon.";
   readonly isSaved = signal(true);
@@ -252,6 +253,10 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly isDragging = signal(false);
   readonly aboutDialogOpen = signal(false);
   readonly exportNotice = signal<string | null>(null);
+  readonly appVersion = signal(APP_VERSION_FALLBACK);
+  readonly isCheckingUpdates = signal(false);
+  private readonly updaterService = inject(UpdaterService);
+
 
   readonly layout = computed<LayoutResult>(() => {
     this.layoutVersion();
@@ -354,7 +359,18 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
       window.addEventListener("resize", this.resizeListener);
       this.resizeListener();
       this.setupSystemPreferenceWatcher();
+      if ((window as any).__TAURI_INTERNALS__) {
+        import("@tauri-apps/api/app").then(({ getVersion }) =>
+          getVersion().then(v => this.appVersion.set(`v${v}`))
+        );
+      }
     }
+  }
+
+  async checkForUpdates(): Promise<void> {
+    this.isCheckingUpdates.set(true);
+    await this.updaterService.manualCheck();
+    this.isCheckingUpdates.set(false);
   }
 
   ngAfterViewInit(): void {

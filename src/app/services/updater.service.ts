@@ -6,14 +6,11 @@ export class UpdaterService {
   private messages = inject(MessageService);
 
   async checkForUpdates(): Promise<void> {
-    // Only runs inside the Tauri desktop shell
     if (typeof (window as any).__TAURI_INTERNALS__ === 'undefined') return;
-
     try {
       const { check } = await import('@tauri-apps/plugin-updater');
       const update = await check();
       if (!update?.available) return;
-
       this.messages.add({
         severity: 'info',
         summary: `Update available — v${update.version}`,
@@ -23,6 +20,46 @@ export class UpdaterService {
       });
     } catch (err) {
       console.warn('Update check failed:', err);
+    }
+  }
+
+  async manualCheck(): Promise<void> {
+    if (typeof (window as any).__TAURI_INTERNALS__ === 'undefined') {
+      this.messages.add({
+        severity: 'info',
+        summary: 'Updates unavailable',
+        detail: 'Auto-update only works in the desktop app.',
+        life: 4000,
+      });
+      return;
+    }
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater');
+      const update = await check();
+      if (!update?.available) {
+        this.messages.add({
+          severity: 'success',
+          summary: 'You\'re up to date',
+          detail: 'No updates available right now.',
+          life: 4000,
+        });
+        return;
+      }
+      this.messages.add({
+        severity: 'info',
+        summary: `Update available — v${update.version}`,
+        detail: 'Click "Update Now" to download and restart.',
+        sticky: true,
+        data: update,
+      });
+    } catch (err) {
+      console.warn('Update check failed:', err);
+      this.messages.add({
+        severity: 'error',
+        summary: 'Update check failed',
+        detail: String(err),
+        life: 6000,
+      });
     }
   }
 

@@ -303,7 +303,16 @@
           <h2 id="aboutDialogTitle">Intentio Mind Map</h2>
           <p>Craft ideas with focus and flow.</p>
           <div class="about-version">
-            <span>{{ appVersion }}</span>
+            <span>{{ appVersion() }}</span>
+            <button
+              type="button"
+              class="check-updates-btn"
+              [disabled]="isCheckingUpdates()"
+              (click)="checkForUpdates()"
+            >
+              <i class="pi" [ngClass]="isCheckingUpdates() ? 'pi-spin pi-spinner' : 'pi-refresh'"></i>
+              {{ isCheckingUpdates() ? 'Checking…' : 'Check for updates' }}
+            </button>
           </div>
         </div>
       </div>
