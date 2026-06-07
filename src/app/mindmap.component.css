@@ -130,6 +130,7 @@
   padding: 4px 8px;
   align-items: center;
   justify-content: center;
+  /* position: relative; */
 }
 
 .node-input {
@@ -150,6 +151,52 @@
   cursor: text;
   align-self: center;
   min-height: 1.35em;
+}
+
+.command-suggestions {
+  position: absolute;
+  transform: translateX(-50%);
+  background: rgba(6, 42, 68, 0.92);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 2600;
+  min-width: 160px;
+}
+
+.mindmap-container.light-mode .command-suggestions {
+  background: rgba(255, 255, 255, 0.95);
+  color: #062a44;
+}
+
+.mindmap-container.light-mode .command-suggestion {
+  color: #062a44;
+}
+
+.mindmap-container.light-mode .command-suggestion:hover,
+.mindmap-container.light-mode .command-suggestion.active {
+  background: rgba(6, 42, 68, 0.12);
+}
+
+.command-suggestion {
+  border: none;
+  background: transparent;
+  color: #f5f7fb;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.command-suggestion:hover,
+.command-suggestion.active {
+  background: rgba(240, 95, 54, 0.25);
 }
 
 .top-bar {
@@ -497,6 +544,17 @@
   margin: 2px 0 0;
   font-size: 0.9rem;
   opacity: 0.85;
+}
+
+.about-version {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.about-license {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.95);
+  margin-bottom: 0.5rem;
 }
 
 .about-body {

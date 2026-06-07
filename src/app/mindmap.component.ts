@@ -145,6 +145,12 @@ const DEFAULT_MAP_NAME = "Untitled Mind Map";
 const RECENT_LIMIT = 5;
 const EXPORT_FONT_SIZE = 12;
 const EXPORT_LINE_HEIGHT = 16;
+const APP_VERSION = "v0.1.0";
+const COMMANDS: Record<string, () => string> = {
+  "/date": () => new Date().toLocaleDateString(),
+  "/time": () => new Date().toLocaleTimeString(),
+  "/datetime": () => new Date().toLocaleString()
+};
 
 @Component({
   selector: "app-mindmap",
@@ -180,10 +186,32 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly displayedMapName = computed(
     () => this.mapName() || this.mapTitleText()
   );
+  readonly appVersion = APP_VERSION;
+  readonly licensingNotice =
+    "Free for personal use – commercial license coming soon.";
   readonly isSaved = signal(true);
   readonly fileMenuOpen = signal(false);
   readonly exportMenuOpen = signal(false);
   readonly recentMaps = signal<RecentMapEntry[]>(this.restoreRecentMaps());
+  readonly commandSelectionIndex = signal(0);
+  readonly commandSuggestionAnchor = signal<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+  readonly commandSuggestions = computed(() => {
+    const editingId = this.editingNodeId();
+    this.layoutVersion();
+    if (!editingId) {
+      return [];
+    }
+    const input = this.findInputRef(editingId);
+    const value = input?.value ?? "";
+    if (!value.startsWith("/")) {
+      return [];
+    }
+    return this.getCommandMatches(value);
+  });
 
   private lastPointer = { x: 0, y: 0 };
   private editOriginal = "";
@@ -283,6 +311,39 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
       height: window.innerHeight
     });
   };
+
+  private readonly commandSuggestionPositionEffect = effect(() => {
+    const suggestions = this.commandSuggestions();
+    if (!suggestions.length) {
+      this.commandSuggestionAnchor.set(null);
+      this.commandSelectionIndex.set(0);
+      return;
+    }
+    const editingId = this.editingNodeId();
+    if (!editingId) {
+      this.commandSuggestionAnchor.set(null);
+      return;
+    }
+    const input = this.findInputRef(editingId);
+    const wrapper = this.canvasWrapper?.nativeElement;
+    if (!input || !wrapper) {
+      this.commandSuggestionAnchor.set(null);
+      this.commandSelectionIndex.set(0);
+      return;
+    }
+    const inputRect = input.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const width = Math.min(inputRect.width, wrapperRect.width - 24);
+    this.commandSuggestionAnchor.set({
+      top: inputRect.bottom - wrapperRect.top + 8,
+      left: inputRect.left - wrapperRect.left + inputRect.width / 2,
+      width: Math.max(160, width)
+    });
+    const currentIndex = this.commandSelectionIndex();
+    if (currentIndex >= suggestions.length) {
+      this.commandSelectionIndex.set(0);
+    }
+  });
 
   constructor() {
     this.syncMapNameFromRoot(this.rootNode().content);
@@ -514,6 +575,36 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
 
   closeAboutDialog(): void {
     this.aboutDialogOpen.set(false);
+  }
+
+  applyCommandSuggestion(command: string): void {
+    const editingId = this.editingNodeId();
+    if (!editingId) {
+      return;
+    }
+    const input = this.findInputRef(editingId);
+    if (!input) {
+      return;
+    }
+    input.value = command;
+    this.updateNodeContent(editingId, command);
+    this.autoSizeInput(editingId);
+    input.focus();
+    const suggestions = this.commandSuggestions();
+    const index = suggestions.indexOf(command);
+    this.commandSelectionIndex.set(index >= 0 ? index : 0);
+  }
+
+  private moveCommandSelection(delta: number): void {
+    const suggestions = this.commandSuggestions();
+    if (!suggestions.length) {
+      this.commandSelectionIndex.set(0);
+      return;
+    }
+    const count = suggestions.length;
+    const current = this.commandSelectionIndex();
+    const next = (current + delta + count) % count;
+    this.commandSelectionIndex.set(next);
   }
 
   private describeThemePreference(pref: ThemePreference): string {
@@ -800,16 +891,76 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   handleInlineInputKey(event: KeyboardEvent): void {
-    if (event.key === "Enter") {
+    const editingId = this.editingNodeId();
+    if (!editingId) {
+      return;
+    }
+    const inputEl = this.findInputRef(editingId);
+    if (!inputEl) {
+      return;
+    }
+    const value = inputEl.value ?? "";
+    const trimmed = value.trim();
+    const isCommand = value.startsWith("/");
+    const commandHandler =
+      trimmed in COMMANDS
+        ? COMMANDS[trimmed as keyof typeof COMMANDS]
+        : undefined;
+    const suggestions = this.commandSuggestions();
+
+    if (event.key === "ArrowDown" && suggestions.length) {
       event.preventDefault();
-      this.commitEditing();
-    } else if (event.key === "Escape") {
+      this.moveCommandSelection(1);
+      return;
+    }
+
+    if (event.key === "ArrowUp" && suggestions.length) {
       event.preventDefault();
-      this.cancelEditing();
-    } else if (event.key === "Tab") {
+      this.moveCommandSelection(-1);
+      return;
+    }
+
+    if (event.key === "Tab") {
+      if (isCommand) {
+        const match = this.getCommandMatch(trimmed);
+        if (match) {
+          event.preventDefault();
+          inputEl.value = match;
+          this.updateNodeContent(editingId, match);
+          this.autoSizeInput(editingId);
+          return;
+        }
+      }
       event.preventDefault();
       this.commitEditing();
       this.addChild(this.selectedNodeId(), true);
+      return;
+    }
+
+    if (event.key === "Enter") {
+      if (suggestions.length) {
+        const selected =
+          suggestions[this.commandSelectionIndex()] ?? suggestions[0];
+        if (selected && selected !== trimmed) {
+          event.preventDefault();
+          this.applyCommandSuggestion(selected);
+          return;
+        }
+      }
+      if (isCommand && commandHandler) {
+        event.preventDefault();
+        this.updateNodeContent(editingId, commandHandler());
+        this.commitEditing();
+        return;
+      }
+      event.preventDefault();
+      this.commitEditing();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      this.cancelEditing();
     }
   }
 
@@ -939,6 +1090,11 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
       if (lowerKey === "v") {
         event.preventDefault();
         void this.pasteClipboardToSelected();
+        return;
+      }
+      if (lowerKey === "s") {
+        event.preventDefault();
+        void this.handleSave();
         return;
       }
       return;
@@ -1988,6 +2144,15 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     const basename = rawName.split(/[/\\]/).pop() ?? rawName;
     const withoutExt = basename.replace(/\.[^/.]+$/, "");
     return withoutExt.trim().length ? withoutExt : DEFAULT_MAP_NAME;
+  }
+
+  private getCommandMatches(input: string): string[] {
+    return Object.keys(COMMANDS).filter((cmd) => cmd.startsWith(input));
+  }
+
+  private getCommandMatch(input: string): string | null {
+    const matches = this.getCommandMatches(input);
+    return matches.length === 1 ? matches[0] : null;
   }
 
   private findInputRef(id: string): HTMLTextAreaElement | undefined {

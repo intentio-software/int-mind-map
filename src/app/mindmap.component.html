@@ -242,6 +242,27 @@
     </g>
   </svg>
 
+  <ng-container *ngIf="commandSuggestions() as suggestions">
+    <div
+      class="command-suggestions"
+      *ngIf="suggestions.length && commandSuggestionAnchor() as anchor"
+      [style.top.px]="anchor.top"
+      [style.left.px]="anchor.left"
+      [style.width.px]="anchor.width"
+    >
+      <button
+        type="button"
+        class="command-suggestion"
+        *ngFor="let suggestion of suggestions; let idx = index"
+        [class.active]="idx === commandSelectionIndex()"
+        (mousedown)="$event.preventDefault()"
+        (click)="applyCommandSuggestion(suggestion)"
+      >
+        {{ suggestion }}
+      </button>
+    </div>
+  </ng-container>
+
   <input
     #importInput
     type="file"
@@ -281,6 +302,9 @@
         <div class="about-title-group">
           <h2 id="aboutDialogTitle">Intentio Mind Map</h2>
           <p>Craft ideas with focus and flow.</p>
+          <div class="about-version">
+            <span>{{ appVersion }}</span>
+          </div>
         </div>
       </div>
       <div id="aboutDialogBody" class="about-body">
@@ -288,6 +312,9 @@
           Intentio helps you capture strategy, story arcs, and product plans
           visually. Export mind maps, switch themes, and stay immersed in the
           canvas.
+        </p>
+        <p class="about-license">
+          {{ licensingNotice }}
         </p>
         <a
           class="about-link"

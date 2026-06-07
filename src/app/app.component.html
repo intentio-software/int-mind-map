@@ -1,1 +1,21 @@
+<p-toast position="bottom-right">
+  <ng-template #message let-message>
+    <div class="update-toast">
+      <span class="p-toast-message-icon pi pi-info-circle"></span>
+      <div class="p-toast-message-text">
+        <span class="p-toast-summary">{{ message.summary }}</span>
+        <div class="p-toast-detail">{{ message.detail }}</div>
+        @if (message.data) {
+          <p-button
+            label="Update Now"
+            size="small"
+            styleClass="mt-2"
+            (onClick)="installUpdate(message)"
+          />
+        }
+      </div>
+    </div>
+  </ng-template>
+</p-toast>
+
 <app-mindmap></app-mindmap>
