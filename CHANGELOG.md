@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/intentio-software/int-mind-map/compare/v1.1.1...v1.1.2) (2026-06-07)
+
+
+### Bug Fixes
+
+* resolve release creation and improve update error handling ([27cda12](https://github.com/intentio-software/int-mind-map/commit/27cda122a5310237641306fa507392d7de4b950f))
+
 ## [1.1.1](https://github.com/intentio-software/int-mind-map/compare/v1.1.0...v1.1.1) (2026-06-07)
 
 
