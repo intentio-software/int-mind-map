@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/intentio-software/int-mind-map/compare/v1.2.0...v1.2.1) (2026-06-07)
+
+
+### Bug Fixes
+
+* add shell: bash to workflow steps for Windows runner compatibility ([681123b](https://github.com/intentio-software/int-mind-map/commit/681123bbcc627b6a95fa7f9136c344b6d7ab1aee))
+
 # [1.2.0](https://github.com/intentio-software/int-mind-map/compare/v1.1.2...v1.2.0) (2026-06-07)
 
 
