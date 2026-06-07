@@ -53,11 +53,16 @@ jobs:
 
       - run: npm ci
 
-      - name: Get release ID
+      - name: Get or create draft release
         id: release
         run: |
           RELEASE_ID=$(gh api repos/${{ github.repository }}/releases \
             --jq '.[] | select(.tag_name=="${{ github.ref_name }}") | .id' | head -1)
+          if [ -z "$RELEASE_ID" ]; then
+            RELEASE_ID=$(gh release create ${{ github.ref_name }} \
+              --draft --title "${{ github.ref_name }}" --generate-notes \
+              --json id --jq '.id')
+          fi
           echo "id=$RELEASE_ID" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

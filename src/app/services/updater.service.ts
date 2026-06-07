@@ -54,11 +54,15 @@ export class UpdaterService {
       });
     } catch (err) {
       console.warn('Update check failed:', err);
+      const isNetworkError = String(err).toLowerCase().includes('fetch') ||
+        String(err).toLowerCase().includes('json');
       this.messages.add({
-        severity: 'error',
+        severity: 'warn',
         summary: 'Update check failed',
-        detail: String(err),
-        life: 6000,
+        detail: isNetworkError
+          ? 'Could not reach the update server. Try again later.'
+          : String(err),
+        life: 4000,
       });
     }
   }
