@@ -81,6 +81,7 @@ jobs:
 
   publish:
     needs: build
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -93,16 +94,22 @@ jobs:
           node-version: '20'
 
       - name: Generate latest.json from release .sig files
+        id: gen_json
+        continue-on-error: true
         run: node scripts/generate-update-json.js ${{ github.event.client_payload.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
 
-      - name: Upload latest.json and publish release
+      - name: Upload latest.json
+        if: steps.gen_json.outcome == 'success'
         shell: bash
-        run: |
-          TAG=${{ github.event.client_payload.tag }}
-          gh release upload $TAG latest.json --clobber
-          gh release edit $TAG --draft=false
+        run: gh release upload ${{ github.event.client_payload.tag }} latest.json --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish release
+        shell: bash
+        run: gh release edit ${{ github.event.client_payload.tag }} --draft=false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
