@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/intentio-software/int-mind-map/compare/v1.4.0...v1.5.0) (2026-06-08)
+
+
+### Features
+
+* add verification for TAURI_SIGNING_PRIVATE_KEY and update tauri.conf.json for updater artifacts and Apple signing ([719c505](https://github.com/intentio-software/int-mind-map/commit/719c505f9f1aa862c824cb97963040f4f77bd5d4))
+
 # [1.4.0](https://github.com/intentio-software/int-mind-map/compare/v1.3.0...v1.4.0) (2026-06-08)
 
 
