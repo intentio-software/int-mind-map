@@ -37,11 +37,10 @@ Grab the latest installer for your platform from the [Releases](https://github.c
 | Cancel edit | `Escape` |
 | Collapse / expand | `Space` |
 | Navigate | `Arrow keys` |
-| Select multiple nodes | `Shift + ↑↓` |
+| Select multiple nodes | `Shift + ↑↓` or `Shift + Click` |
 | Clear multi-selection | `Escape` |
-| Move node up / down | `Ctrl/Cmd + ↑↓` |
-| Move selected group up / down | `Ctrl/Cmd + ↑↓` (with multi-select) |
-| Indent / outdent | `Ctrl/Cmd + ←→` |
+| Move node / group up / down | `Ctrl/Cmd + ↑↓` |
+| Indent / outdent node / group | `Ctrl/Cmd + ←→` |
 | Undo / redo | `Ctrl/Cmd + Z` / `Ctrl/Cmd + Shift + Z` |
 | Copy node | `Ctrl/Cmd + C` |
 | Paste node | `Ctrl/Cmd + V` |

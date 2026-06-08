@@ -1232,11 +1232,18 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
       return;
     }
-    const info = this.findNode(this.selectedNodeId());
-    if (!info) {
-      return;
+    const selectedIds = this.selectedNodeIds();
+    let payload: string;
+    if (selectedIds.size > 1) {
+      const nodes = this.selectedNodesInOrder().map((n) =>
+        this.cloneForClipboard(n)
+      );
+      payload = JSON.stringify({ type: "mindmap-group", nodes }, null, 2);
+    } else {
+      const info = this.findNode(this.selectedNodeId());
+      if (!info) return;
+      payload = JSON.stringify(this.cloneForClipboard(info.node), null, 2);
     }
-    const payload = JSON.stringify(this.cloneForClipboard(info.node), null, 2);
     try {
       await navigator.clipboard.writeText(payload);
     } catch (error) {
@@ -1250,15 +1257,22 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     try {
       const raw = await navigator.clipboard.readText();
-      if (!raw) {
-        return;
-      }
+      if (!raw) return;
       const parsed = JSON.parse(raw);
-      const node = this.rehydrateClipboardNode(parsed);
-      if (!node) {
-        return;
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        parsed.type === "mindmap-group" &&
+        Array.isArray(parsed.nodes)
+      ) {
+        const nodes = (parsed.nodes as unknown[])
+          .map((n) => this.rehydrateClipboardNode(n))
+          .filter((n): n is MindmapNode => !!n);
+        if (nodes.length > 0) this.attachClipboardNodes(nodes);
+      } else {
+        const node = this.rehydrateClipboardNode(parsed);
+        if (node) this.attachClipboardNode(node);
       }
-      this.attachClipboardNode(node);
     } catch (error) {
       console.warn("Paste failed", error);
     }
@@ -1266,15 +1280,39 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private attachClipboardNode(node: MindmapNode): void {
     const target = this.findNode(this.selectedNodeId());
-    if (!target) {
-      return;
-    }
+    if (!target) return;
     this.recordSnapshot();
     node.parentId = target.node.id;
     target.node.collapsed = false;
     target.node.children = [...target.node.children, node];
     this.bumpLayoutVersion();
     this.selectNode(node.id);
+  }
+
+  private attachClipboardNodes(nodes: MindmapNode[]): void {
+    const target = this.findNode(this.selectedNodeId());
+    if (!target) return;
+    this.recordSnapshot();
+    target.node.collapsed = false;
+    for (const node of nodes) {
+      node.parentId = target.node.id;
+    }
+    target.node.children = [...target.node.children, ...nodes];
+    this.bumpLayoutVersion();
+    // Select all pasted nodes, primary = first
+    this.selectedNodeId.set(nodes[0].id);
+    this.selectedNodeIds.set(new Set(nodes.map((n) => n.id)));
+  }
+
+  private selectedNodesInOrder(): MindmapNode[] {
+    const selectedIds = this.selectedNodeIds();
+    const result: MindmapNode[] = [];
+    const traverse = (node: MindmapNode): void => {
+      if (selectedIds.has(node.id)) result.push(node);
+      for (const child of node.children) traverse(child);
+    };
+    traverse(this.rootNode());
+    return result;
   }
 
   nodeHeightFor(node: MindmapNode): number {
@@ -1693,49 +1731,66 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private promoteSelectedNode(): void {
-    const info = this.findNode(this.selectedNodeId());
-    if (!info?.parent) {
-      return;
-    }
-    const parentInfo = this.findNode(info.parent.id);
-    if (!parentInfo?.parent) {
-      return;
-    }
-    this.recordSnapshot();
-    const parent = info.parent;
+    const primaryInfo = this.findNode(this.selectedNodeId());
+    if (!primaryInfo?.parent) return;
+    const parentInfo = this.findNode(primaryInfo.parent.id);
+    if (!parentInfo?.parent) return;
+
+    const selectedIds = this.selectedNodeIds();
+    const parent = primaryInfo.parent;
     const grandparent = parentInfo.parent;
-    parent.children = parent.children.filter(
-      (child) => child.id !== info.node.id
-    );
+
+    // Only promote nodes that belong to the same parent as the primary
+    const toPromote = parent.children.filter((c) => selectedIds.has(c.id));
+    if (toPromote.length === 0) return;
+
+    this.recordSnapshot();
+
+    parent.children = parent.children.filter((c) => !selectedIds.has(c.id));
+
     const grandSiblings = [...grandparent.children];
-    const insertIndex = grandSiblings.findIndex(
-      (child) => child.id === parent.id
-    );
-    const position = insertIndex >= 0 ? insertIndex + 1 : grandSiblings.length;
-    grandSiblings.splice(position, 0, info.node);
+    const insertAt =
+      grandSiblings.findIndex((c) => c.id === parent.id) + 1 ||
+      grandSiblings.length;
+    grandSiblings.splice(insertAt, 0, ...toPromote);
     grandparent.children = grandSiblings;
-    info.node.parentId = grandparent.id;
+
+    for (const node of toPromote) {
+      node.parentId = grandparent.id;
+    }
+
     this.bumpLayoutVersion();
   }
 
   private demoteSelectedNode(): void {
-    const info = this.findNode(this.selectedNodeId());
-    if (!info?.parent) {
-      return;
-    }
-    const parent = info.parent;
+    const primaryInfo = this.findNode(this.selectedNodeId());
+    if (!primaryInfo?.parent) return;
+
+    const selectedIds = this.selectedNodeIds();
+    const parent = primaryInfo.parent;
     const siblings = [...parent.children];
-    const index = siblings.findIndex((child) => child.id === info.node.id);
-    const previous = siblings[index - 1];
-    if (!previous) {
-      return;
-    }
+
+    // Nodes to demote: selected nodes in this parent, in their current order
+    const toDemote = siblings.filter((c) => selectedIds.has(c.id));
+    if (toDemote.length === 0) return;
+
+    // Find the previous non-selected sibling before the first selected node
+    const firstIndex = siblings.findIndex((c) => c.id === toDemote[0].id);
+    const target = siblings
+      .slice(0, firstIndex)
+      .reverse()
+      .find((s) => !selectedIds.has(s.id));
+    if (!target) return;
+
     this.recordSnapshot();
-    siblings.splice(index, 1);
-    parent.children = siblings;
-    previous.collapsed = false;
-    previous.children = [...previous.children, info.node];
-    info.node.parentId = previous.id;
+
+    parent.children = siblings.filter((c) => !selectedIds.has(c.id));
+    target.collapsed = false;
+    for (const node of toDemote) {
+      node.parentId = target.id;
+    }
+    target.children = [...target.children, ...toDemote];
+
     this.bumpLayoutVersion();
   }
 
