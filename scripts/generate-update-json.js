@@ -18,9 +18,8 @@ const version = tag.replace(/^v/, '');
 // Map .sig filename suffixes to Tauri platform keys.
 // Universal macOS DMG covers both darwin arches.
 const PLATFORM_PATTERNS = [
+  { platforms: ['darwin-aarch64', 'darwin-x86_64'], pattern: /universal\.app\.tar\.gz\.sig$/ },
   { platforms: ['darwin-aarch64', 'darwin-x86_64'], pattern: /universal\.dmg\.sig$/ },
-  { platforms: ['darwin-aarch64'], pattern: /aarch64\.dmg\.sig$/ },
-  { platforms: ['darwin-x86_64'], pattern: /x64\.dmg\.sig$/ },
   { platforms: ['linux-x86_64'], pattern: /amd64\.AppImage\.sig$/ },
   { platforms: ['windows-x86_64'], pattern: /(x64_en-US\.msi|x64-setup\.exe)\.sig$/ },
 ];
