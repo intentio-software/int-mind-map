@@ -99,6 +99,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: List release assets
+        shell: bash
+        run: |
+          echo "Assets in release ${{ github.event.client_payload.tag }}:"
+          gh release view ${{ github.event.client_payload.tag }} --json assets \
+            --jq '.assets[].name'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Generate latest.json from release .sig files
         id: gen_json
         continue-on-error: true
