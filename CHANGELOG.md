@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/intentio-software/int-mind-map/compare/v1.3.0...v1.4.0) (2026-06-08)
+
+
+### Features
+
+* enhance clipboard functionality for multi-selection of nodes as well as indent/outdent ([7299c9a](https://github.com/intentio-software/int-mind-map/commit/7299c9afd3670bb671d63830b2449290366d8a91))
+
 # [1.3.0](https://github.com/intentio-software/int-mind-map/compare/v1.2.5...v1.3.0) (2026-06-08)
 
 
