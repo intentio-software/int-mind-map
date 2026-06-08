@@ -77,6 +77,13 @@
   filter: drop-shadow(0 14px 30px rgba(240, 95, 54, 0.35));
 }
 
+.node.multi-selected rect {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 3;
+  filter: drop-shadow(0 8px 20px rgba(240, 95, 54, 0.2));
+}
+
 .node-branch-indicator {
   pointer-events: auto;
   cursor: pointer;

@@ -232,6 +232,9 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly rootNode = signal<MindmapNode>(this.restoreInitialTree());
   private readonly layoutVersion = signal(0);
   readonly selectedNodeId = signal<string>(this.rootNode().id);
+  readonly selectedNodeIds = signal<Set<string>>(
+    new Set([this.rootNode().id])
+  );
   readonly editingNodeId = signal<string | null>(null);
   readonly canvasSize = signal({
     width:
@@ -496,7 +499,7 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
       const root = this.createRoot();
       this.rootNode.set(root);
       this.mapTitleText.set(root.content || "Mind Map");
-      this.selectedNodeId.set(root.id);
+      this.selectNode(root.id);
       this.viewport.set({
         offsetX: 0,
         offsetY: 0,
@@ -719,7 +722,7 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.editingNodeId() && this.selectedNodeId() !== nodeId) {
       this.commitEditing();
     }
-    this.selectedNodeId.set(nodeId);
+    this.selectNode(nodeId, event.shiftKey);
   }
 
   onCanvasPointerDown(event: MouseEvent): void {
@@ -830,7 +833,7 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     parentInfo.node.collapsed = false;
     parentInfo.node.children = [...parentInfo.node.children, newNode];
     this.bumpLayoutVersion();
-    this.selectedNodeId.set(newNode.id);
+    this.selectNode(newNode.id);
     if (startEditing) {
       this.beginEditing(newNode.id, true);
     }
@@ -854,27 +857,48 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     siblings.splice(index + 1, 0, newNode);
     parent.children = siblings;
     this.bumpLayoutVersion();
-    this.selectedNodeId.set(newNode.id);
+    this.selectNode(newNode.id);
     if (startEditing) {
       this.beginEditing(newNode.id, true);
     }
   }
 
   deleteSelected(): void {
-    const info = this.findNode(this.selectedNodeId());
-    if (!info?.parent) {
-      return;
-    }
+    const selectedIds = this.selectedNodeIds();
+
+    // Only delete nodes whose parent is not also being deleted (avoids double-free)
+    const toDelete = [...selectedIds].filter((id) => {
+      const info = this.findNode(id);
+      return info?.parent && !selectedIds.has(info.parent.id);
+    });
+
+    if (toDelete.length === 0) return;
+
     this.recordSnapshot();
-    const parent = info.parent;
-    const siblings = parent.children;
-    const index = siblings.findIndex((child) => child.id === info.node.id);
-    const next = siblings[index + 1];
-    const previous = siblings[index - 1];
-    const fallback = next?.id ?? previous?.id ?? parent.id;
-    parent.children = siblings.filter((child) => child.id !== info.node.id);
+
+    // Determine fallback selection before mutating the tree
+    const primaryInfo = this.findNode(this.selectedNodeId());
+    let fallback = this.rootNode().id;
+    if (primaryInfo?.parent && !selectedIds.has(primaryInfo.parent.id)) {
+      const siblings = primaryInfo.parent.children;
+      const index = siblings.findIndex((c) => c.id === this.selectedNodeId());
+      const next = siblings.slice(index + 1).find((s) => !selectedIds.has(s.id));
+      const prev = siblings
+        .slice(0, index)
+        .reverse()
+        .find((s) => !selectedIds.has(s.id));
+      fallback = next?.id ?? prev?.id ?? primaryInfo.parent.id;
+    }
+
+    const deleteSet = new Set(toDelete);
+    const removeNodes = (node: MindmapNode): void => {
+      node.children = node.children.filter((c) => !deleteSet.has(c.id));
+      node.children.forEach(removeNodes);
+    };
+    removeNodes(this.rootNode());
+
     this.bumpLayoutVersion();
-    this.selectedNodeId.set(fallback);
+    this.selectNode(fallback);
     this.editingNodeId.set(null);
   }
 
@@ -884,7 +908,7 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
     const node = info.node;
-    this.selectedNodeId.set(nodeId);
+    this.selectNode(nodeId);
     this.editOriginal = node.content;
     this.shouldSelectAll = !clearContent;
     this.editingHistoryCaptured = false;
@@ -1003,21 +1027,32 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private toggleCollapse(nodeId: string): void {
-    const info = this.findNode(nodeId);
-    if (!info) {
-      return;
-    }
+    const selectedIds = this.selectedNodeIds();
+    const nodesToToggle =
+      selectedIds.size > 1 && selectedIds.has(nodeId)
+        ? [...selectedIds]
+        : [nodeId];
+
+    const hasAnyInfo = nodesToToggle.some((id) => this.findNode(id));
+    if (!hasAnyInfo) return;
+
     this.recordSnapshot();
-    info.node.collapsed = !info.node.collapsed;
-    if (info.node.collapsed) {
-      const currentSelection = this.selectedNodeId();
-      if (
-        currentSelection !== nodeId &&
-        this.isDescendant(nodeId, currentSelection)
-      ) {
-        this.selectedNodeId.set(nodeId);
+
+    for (const id of nodesToToggle) {
+      const info = this.findNode(id);
+      if (!info) continue;
+      info.node.collapsed = !info.node.collapsed;
+      if (info.node.collapsed) {
+        const currentSelection = this.selectedNodeId();
+        if (
+          currentSelection !== id &&
+          this.isDescendant(id, currentSelection)
+        ) {
+          this.selectNode(id);
+        }
       }
     }
+
     this.bumpLayoutVersion();
   }
 
@@ -1137,6 +1172,11 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
         }
         return;
       case "Escape":
+        if (this.selectedNodeIds().size > 1) {
+          event.preventDefault();
+          this.selectedNodeIds.set(new Set([this.selectedNodeId()]));
+          return;
+        }
         if (this.editingNodeId()) {
           event.preventDefault();
           this.cancelEditing();
@@ -1144,11 +1184,11 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
         return;
       case "ArrowUp":
         event.preventDefault();
-        this.moveBetweenSiblings(-1);
+        this.moveBetweenSiblings(-1, event.shiftKey);
         return;
       case "ArrowDown":
         event.preventDefault();
-        this.moveBetweenSiblings(1);
+        this.moveBetweenSiblings(1, event.shiftKey);
         return;
       case "ArrowLeft":
         event.preventDefault();
@@ -1234,7 +1274,7 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     target.node.collapsed = false;
     target.node.children = [...target.node.children, node];
     this.bumpLayoutVersion();
-    this.selectedNodeId.set(node.id);
+    this.selectNode(node.id);
   }
 
   nodeHeightFor(node: MindmapNode): number {
@@ -1570,7 +1610,16 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     return `data:image/svg+xml;charset=utf-8,${encoded}`;
   }
 
-  private moveBetweenSiblings(offset: number): void {
+  private selectNode(id: string, addToSelection = false): void {
+    this.selectedNodeId.set(id);
+    if (addToSelection) {
+      this.selectedNodeIds.update((ids) => new Set([...ids, id]));
+    } else {
+      this.selectedNodeIds.set(new Set([id]));
+    }
+  }
+
+  private moveBetweenSiblings(offset: number, addToSelection = false): void {
     const info = this.findNode(this.selectedNodeId());
     if (!info?.parent) {
       return;
@@ -1579,14 +1628,14 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     const index = siblings.findIndex((child) => child.id === info.node.id);
     const next = siblings[index + offset];
     if (next) {
-      this.selectedNodeId.set(next.id);
+      this.selectNode(next.id, addToSelection);
     }
   }
 
   private goToParent(): void {
     const info = this.findNode(this.selectedNodeId());
     if (info?.parent) {
-      this.selectedNodeId.set(info.parent.id);
+      this.selectNode(info.parent.id);
     }
   }
 
@@ -1597,25 +1646,49 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     const child = info.node.children[0];
     if (child) {
-      this.selectedNodeId.set(child.id);
+      this.selectNode(child.id);
     }
   }
 
   private reorderSelectedWithinParent(offset: number): void {
-    const info = this.findNode(this.selectedNodeId());
-    if (!info?.parent) {
-      return;
-    }
+    const primaryInfo = this.findNode(this.selectedNodeId());
+    if (!primaryInfo?.parent) return;
+
+    const parent = primaryInfo.parent;
+    const siblings = [...parent.children];
+    const selectedIds = this.selectedNodeIds();
+
+    const selectedIndices = siblings
+      .map((s, i) => (selectedIds.has(s.id) ? i : -1))
+      .filter((i) => i >= 0);
+
+    if (selectedIndices.length === 0) return;
+
+    const minIndex = Math.min(...selectedIndices);
+    const maxIndex = Math.max(...selectedIndices);
+
+    if (offset > 0 && maxIndex >= siblings.length - 1) return;
+    if (offset < 0 && minIndex <= 0) return;
+
     this.recordSnapshot();
-    const siblings = [...info.parent.children];
-    const index = siblings.findIndex((child) => child.id === info.node.id);
-    const targetIndex = index + offset;
-    if (targetIndex < 0 || targetIndex >= siblings.length) {
-      return;
+
+    if (offset > 0) {
+      for (let i = selectedIndices.length - 1; i >= 0; i--) {
+        const idx = selectedIndices[i];
+        if (idx < siblings.length - 1 && !selectedIds.has(siblings[idx + 1].id)) {
+          [siblings[idx], siblings[idx + 1]] = [siblings[idx + 1], siblings[idx]];
+        }
+      }
+    } else {
+      for (let i = 0; i < selectedIndices.length; i++) {
+        const idx = selectedIndices[i];
+        if (idx > 0 && !selectedIds.has(siblings[idx - 1].id)) {
+          [siblings[idx], siblings[idx - 1]] = [siblings[idx - 1], siblings[idx]];
+        }
+      }
     }
-    const [removed] = siblings.splice(index, 1);
-    siblings.splice(targetIndex, 0, removed);
-    info.parent.children = siblings;
+
+    parent.children = siblings;
     this.bumpLayoutVersion();
   }
 
@@ -1822,7 +1895,7 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     this.runWithoutDirty(() => {
       this.rootNode.set(normalized);
       this.mapTitleText.set(normalized.content || "Mind Map");
-      this.selectedNodeId.set(normalized.id);
+      this.selectNode(normalized.id);
       this.editingNodeId.set(null);
       this.viewport.set({
         offsetX: 0,
@@ -2512,6 +2585,7 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     this.runWithoutDirty(() => {
       this.rootNode.set(this.cloneTree(snapshot.tree));
       this.selectedNodeId.set(snapshot.selectedId);
+      this.selectedNodeIds.set(new Set([snapshot.selectedId]));
       this.viewport.set({ ...snapshot.viewport });
       this.editingNodeId.set(null);
       this.layoutVersion.update((value) => value + 1);

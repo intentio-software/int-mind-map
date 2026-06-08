@@ -182,6 +182,7 @@
           *ngFor="let item of layout().nodes; trackBy: trackNode"
           class="node"
           [class.selected]="item.id === selectedNodeId()"
+          [class.multi-selected]="selectedNodeIds().size > 1 && selectedNodeIds().has(item.id) && item.id !== selectedNodeId()"
           [class.collapsed]="item.node.collapsed"
           [attr.transform]="nodeTransform(item)"
           (click)="onNodeClick($event, item.id)"
