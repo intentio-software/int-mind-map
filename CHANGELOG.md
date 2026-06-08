@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/intentio-software/int-mind-map/compare/v1.2.1...v1.2.2) (2026-06-08)
+
+
+### Bug Fixes
+
+* always publish release even if latest.json generation fails ([63a39b4](https://github.com/intentio-software/int-mind-map/commit/63a39b4fbb191c372bd11e3d9ce5730b6d294195))
+
 ## [1.2.1](https://github.com/intentio-software/int-mind-map/compare/v1.2.0...v1.2.1) (2026-06-07)
 
 
