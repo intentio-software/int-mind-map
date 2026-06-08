@@ -1,3 +1,10 @@
+## [1.2.5](https://github.com/intentio-software/int-mind-map/compare/v1.2.4...v1.2.5) (2026-06-08)
+
+
+### Bug Fixes
+
+* set empty signing password in workflow and fix macOS sig pattern ([014ce85](https://github.com/intentio-software/int-mind-map/commit/014ce853c1cd5d13a6825f721f658fb5bbd915ad))
+
 ## [1.2.4](https://github.com/intentio-software/int-mind-map/compare/v1.2.3...v1.2.4) (2026-06-08)
 
 
