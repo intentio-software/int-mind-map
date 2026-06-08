@@ -1,3 +1,10 @@
+## [1.2.4](https://github.com/intentio-software/int-mind-map/compare/v1.2.3...v1.2.4) (2026-06-08)
+
+
+### Bug Fixes
+
+* add asset listing step to debug missing .sig files ([af7a5ac](https://github.com/intentio-software/int-mind-map/commit/af7a5acb50b5d10debf1c2d9e98b9942e9232a62))
+
 ## [1.2.3](https://github.com/intentio-software/int-mind-map/compare/v1.2.2...v1.2.3) (2026-06-08)
 
 
