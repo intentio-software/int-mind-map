@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/intentio-software/int-mind-map/compare/v1.2.5...v1.3.0) (2026-06-08)
+
+
+### Features
+
+* implement multi-selection for nodes and update related functionalities ([4f07823](https://github.com/intentio-software/int-mind-map/commit/4f07823dcee6bf5d92c75a935b45589bc5adf03e))
+
 ## [1.2.5](https://github.com/intentio-software/int-mind-map/compare/v1.2.4...v1.2.5) (2026-06-08)
 
 
