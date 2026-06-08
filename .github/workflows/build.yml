@@ -93,6 +93,12 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Publish release
+        shell: bash
+        run: gh release edit ${{ github.event.client_payload.tag }} --draft=false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Generate latest.json from release .sig files
         id: gen_json
         continue-on-error: true
@@ -105,11 +111,5 @@ jobs:
         if: steps.gen_json.outcome == 'success'
         shell: bash
         run: gh release upload ${{ github.event.client_payload.tag }} latest.json --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish release
-        shell: bash
-        run: gh release edit ${{ github.event.client_payload.tag }} --draft=false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
