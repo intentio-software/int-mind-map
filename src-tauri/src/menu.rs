@@ -78,6 +78,25 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> tauri::
             &MenuItem::with_id(app, "export-svg", "Export as SVG", true, None::<&str>)?,
             &MenuItem::with_id(app, "export-mm", "Export as Freeplane (.mm)", true, None::<&str>)?,
             &MenuItem::with_id(app, "export-png", "Export as PNG (transparent)", true, None::<&str>)?,
+            &MenuItem::with_id(app, "export-md", "Export as Markdown (.md)", true, None::<&str>)?,
+        ],
+    )?;
+
+    // Sending to Knowledge is a different act from exporting a file: it writes
+    // into a vault the user nominated once and opens the other app.
+    let knowledge_menu = Submenu::with_items(
+        app,
+        "Knowledge",
+        true,
+        &[
+            &MenuItem::with_id(
+                app,
+                "send-knowledge",
+                "Send to Intentio Knowledge",
+                true,
+                Some("CmdOrCtrl+Shift+K"),
+            )?,
+            &MenuItem::with_id(app, "set-knowledge-vault", "Set Knowledge Vault…", true, None::<&str>)?,
         ],
     )?;
 
@@ -94,6 +113,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> tauri::
             &MenuItem::with_id(app, "save-as", "Save As…", true, Some("CmdOrCtrl+Shift+S"))?,
             &PredefinedMenuItem::separator(app)?,
             &export_menu,
+            &knowledge_menu,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::close_window(app, None)?,
         ],

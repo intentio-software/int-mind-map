@@ -17,8 +17,9 @@ import {
 } from "@angular/core";
 import { UpdaterService } from "./services/updater.service";
 import JSZip from "jszip";
-import { save } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
+import { openPath } from "@tauri-apps/plugin-opener";
 
 declare global {
   interface Window {
@@ -38,6 +39,12 @@ declare global {
     };
   }
 }
+
+/** Where the Knowledge vault the user nominated is remembered. */
+const KNOWLEDGE_VAULT_KEY = "intentio-mindmap:knowledge-vault";
+
+/** Where Intentio Knowledge installs. */
+const KNOWLEDGE_APP_PATH = "/Applications/Intentio Knowledge.app";
 
 interface MindmapNode {
   id: string;
@@ -445,6 +452,15 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
         break;
       case "export-png":
         void this.exportPng();
+        break;
+      case "export-md":
+        void this.exportMarkdown();
+        break;
+      case "send-knowledge":
+        void this.sendToKnowledge();
+        break;
+      case "set-knowledge-vault":
+        void this.chooseKnowledgeVault();
         break;
       case "undo":
         this.undo();
@@ -1466,6 +1482,140 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
       this.exportFilename("json"),
       "application/json"
     );
+  }
+
+  /**
+   * The map as a markdown outline: the root as an H1, every other node as a
+   * bullet indented two spaces per level.
+   *
+   * This is the same shape the mind map MCP server exchanges maps in, so a file
+   * written here can be read back without a second format to maintain.
+   */
+  async exportMarkdown(): Promise<void> {
+    await this.saveText(this.buildMarkdownOutline(), this.exportFilename("md"), "text/markdown");
+  }
+
+  private buildMarkdownOutline(): string {
+    const root = this.rootNode();
+    const lines: string[] = [`# ${this.outlineText(root.content) || "Untitled map"}`, ""];
+
+    const walk = (node: MindmapNode, depth: number): void => {
+      for (const child of node.children) {
+        lines.push(`${"  ".repeat(depth)}- ${this.outlineText(child.content)}`);
+        walk(child, depth + 1);
+      }
+    };
+    walk(root, 0);
+
+    return `${lines.join("\n")}\n`;
+  }
+
+  /**
+   * One node's text, flattened to a single line.
+   *
+   * A node may hold several lines; left as-is they would break the outline,
+   * since the next line would not be part of the bullet.
+   */
+  private outlineText(content: string): string {
+    return (content ?? "").replace(/\s*\n\s*/g, " ").trim() || "Untitled";
+  }
+
+  // ---------------------------------------------------------------------------
+  // Intentio Knowledge
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Write the map into the Knowledge vault as a markdown note, then open the
+   * app on it.
+   *
+   * The vault is asked for once and remembered, so this is a single menu click
+   * from then on.
+   */
+  async sendToKnowledge(): Promise<void> {
+    const vault = await this.resolveKnowledgeVault();
+    if (!vault) {
+      return;
+    }
+
+    const name = `${this.slugify(this.mapName()) || "mindmap"}.md`;
+    const target = `${vault.replace(/\/+$/, "")}/${name}`;
+    try {
+      const bytes = new TextEncoder().encode(this.buildMarkdownOutline());
+      await writeFile(target, bytes);
+    } catch (error) {
+      // A remembered vault can be renamed or unmounted between uses.
+      console.error("send to knowledge failed", error);
+      this.showExportNotice(`Could not write to ${vault}. Pick the vault again.`);
+      this.setKnowledgeVault(null);
+      return;
+    }
+
+    this.showExportNotice(`Sent ${name} to Knowledge`);
+    await this.openKnowledgeApp();
+  }
+
+  /** Let the user nominate (or re-nominate) the vault folder. */
+  async chooseKnowledgeVault(): Promise<void> {
+    const chosen = await this.pickKnowledgeVault();
+    if (chosen) {
+      this.showExportNotice(`Knowledge vault set to ${chosen}`);
+    }
+  }
+
+  private async resolveKnowledgeVault(): Promise<string | null> {
+    return this.knowledgeVault() ?? (await this.pickKnowledgeVault());
+  }
+
+  private async pickKnowledgeVault(): Promise<string | null> {
+    try {
+      const chosen = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "Choose your Intentio Knowledge vault"
+      });
+      const path = typeof chosen === "string" ? chosen : null;
+      this.setKnowledgeVault(path);
+      return path;
+    } catch (error) {
+      console.error("vault picker failed", error);
+      return null;
+    }
+  }
+
+  private knowledgeVault(): string | null {
+    try {
+      return window.localStorage.getItem(KNOWLEDGE_VAULT_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  private setKnowledgeVault(path: string | null): void {
+    try {
+      if (path) {
+        window.localStorage.setItem(KNOWLEDGE_VAULT_KEY, path);
+      } else {
+        window.localStorage.removeItem(KNOWLEDGE_VAULT_KEY);
+      }
+    } catch {
+      // Without storage the vault is asked for each time, which still works.
+    }
+  }
+
+  /**
+   * Bring up Intentio Knowledge.
+   *
+   * It reopens its last vault on launch, so pointing it at the folder we just
+   * wrote to is enough; there is no per-note deep link to aim at.
+   */
+  private async openKnowledgeApp(): Promise<void> {
+    try {
+      await openPath(KNOWLEDGE_APP_PATH);
+    } catch (error) {
+      // Not installed, or somewhere else — the note is written either way.
+      console.warn("could not open Intentio Knowledge", error);
+      this.showExportNotice("Note written. Intentio Knowledge could not be opened.");
+    }
   }
 
   async exportFreeplane(): Promise<void> {
