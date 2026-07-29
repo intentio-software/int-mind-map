@@ -137,6 +137,9 @@ const PERSIST_DEBOUNCE = 250;
 const MAX_NODE_CHARS = 360;
 const HISTORY_LIMIT = 50;
 const MOUSE_ZOOM_SENSITIVITY = 0.0009;
+/// Menu zoom steps are larger than the keyboard's, which repeats on key-hold.
+const MENU_ZOOM_IN = 1.2;
+const MENU_ZOOM_OUT = 1 / 1.2;
 const KEYBOARD_ZOOM_IN = 1.04;
 const KEYBOARD_ZOOM_OUT = 0.96;
 const THEME_CYCLE: ThemePreference[] = ["system", "dark", "light"];
@@ -191,8 +194,6 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly licensingNotice =
     "Free for personal use – commercial license coming soon.";
   readonly isSaved = signal(true);
-  readonly fileMenuOpen = signal(false);
-  readonly exportMenuOpen = signal(false);
   readonly recentMaps = signal<RecentMapEntry[]>(this.restoreRecentMaps());
   readonly commandSelectionIndex = signal(0);
   readonly commandSuggestionAnchor = signal<{
@@ -225,6 +226,8 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   private systemPreferenceQuery?: MediaQueryList;
   private systemPreferenceListener?: (event: MediaQueryListEvent) => void;
   private exportNoticeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Detaches the native menu listener when the component goes away. */
+  private menuUnlisten: (() => void) | null = null;
   private savedFilePath: string | null = null;
   private suppressDirty = false;
   private hasNamedSave = false;
@@ -366,7 +369,146 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
         import("@tauri-apps/api/app").then(({ getVersion }) =>
           getVersion().then(v => this.appVersion.set(`v${v}`))
         );
+        void this.connectNativeMenu();
       }
+    }
+  }
+
+  /**
+   * Wire the native menu bar to the same handlers the app already uses.
+   *
+   * Menu items carry no behaviour of their own — they emit an id, and this
+   * dispatch runs the existing method — so there is one implementation of
+   * "save" or "export as SVG" rather than a native copy and a web copy.
+   */
+  private async connectNativeMenu(): Promise<void> {
+    try {
+      const { listen } = await import("@tauri-apps/api/event");
+      this.menuUnlisten = await listen<string>("menu-action", event => {
+        this.runMenuAction(event.payload);
+      });
+      await this.pushRecentsToMenu();
+    } catch (error) {
+      // Without the native menu the in-app controls still work.
+      console.warn("Native menu unavailable", error);
+    }
+  }
+
+  private runMenuAction(action: string): void {
+    // Node-level edits must not fire while a node's text box has focus, for the
+    // same reason those items carry no accelerator.
+    const editingText =
+      typeof document !== "undefined" &&
+      !!document.activeElement?.closest(
+        "input, textarea, select, [contenteditable='true']"
+      );
+    if (
+      editingText &&
+      (action === "undo" ||
+        action === "redo" ||
+        action === "copy-node" ||
+        action === "paste-node")
+    ) {
+      return;
+    }
+
+    if (action.startsWith("recent:")) {
+      const index = Number.parseInt(action.slice("recent:".length), 10);
+      const entry = this.recentMaps()[index];
+      if (entry) {
+        this.openRecentMap(entry);
+      }
+      return;
+    }
+
+    switch (action) {
+      case "new":
+        this.handleNewMap();
+        break;
+      case "open":
+        this.triggerOpenDialog();
+        break;
+      case "save":
+        void this.handleSave();
+        break;
+      case "save-as":
+        void this.handleSaveAs();
+        break;
+      case "export-json":
+        void this.exportJson();
+        break;
+      case "export-svg":
+        void this.exportSvg();
+        break;
+      case "export-mm":
+        void this.exportFreeplane();
+        break;
+      case "export-png":
+        void this.exportPng();
+        break;
+      case "undo":
+        this.undo();
+        break;
+      case "redo":
+        this.redo();
+        break;
+      case "copy-node":
+        void this.copySelectedNode();
+        break;
+      case "paste-node":
+        void this.pasteClipboardToSelected();
+        break;
+      case "fit":
+        this.fitToScreen();
+        break;
+      case "center":
+        this.centerCurrentSelection();
+        break;
+      case "zoom-in":
+        // A menu click has no cursor position, so zoom about the canvas centre.
+        this.applyZoom(MENU_ZOOM_IN);
+        break;
+      case "zoom-out":
+        this.applyZoom(MENU_ZOOM_OUT);
+        break;
+      case "toggle-theme":
+        this.toggleTheme();
+        break;
+      case "about":
+        this.toggleAboutDialog();
+        break;
+      case "check-updates":
+        void this.checkForUpdates();
+        break;
+      case "website":
+        void this.openWebsite();
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** Keep the native Open Recent submenu in step with stored recents. */
+  private async pushRecentsToMenu(): Promise<void> {
+    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
+      return;
+    }
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("set_recent_maps", {
+        recents: this.recentMaps().map(entry => ({ name: entry.name }))
+      });
+    } catch (error) {
+      console.warn("Could not update recent maps menu", error);
+    }
+  }
+
+  private async openWebsite(): Promise<void> {
+    try {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl("https://intentiosoftware.com");
+    } catch (error) {
+      console.warn("Could not open website", error);
     }
   }
 
@@ -407,6 +549,8 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.exportNoticeTimer) {
       clearTimeout(this.exportNoticeTimer);
     }
+    this.menuUnlisten?.();
+    this.menuUnlisten = null;
     this.focusEffectCleanup.destroy();
     this.viewportEffectCleanup.destroy();
     this.themeEffectCleanup.destroy();
@@ -436,45 +580,14 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  toggleFileMenu(event?: Event): void {
-    event?.stopPropagation();
-    const next = !this.fileMenuOpen();
-    this.fileMenuOpen.set(next);
-    if (!next) {
-      this.exportMenuOpen.set(false);
-    }
-  }
-
-  openExportMenu(): void {
-    this.exportMenuOpen.set(true);
-  }
-
-  closeExportMenu(): void {
-    this.exportMenuOpen.set(false);
-  }
-
-  toggleExportMenu(event: Event): void {
-    event.stopPropagation();
-    this.exportMenuOpen.update((open) => !open);
-  }
-
-  closeMenus(): void {
-    if (this.fileMenuOpen()) {
-      this.fileMenuOpen.set(false);
-    }
-    if (this.exportMenuOpen()) {
-      this.exportMenuOpen.set(false);
-    }
-  }
-
-  @HostListener("document:click", ["$event"])
-  handleDocumentClick(event: MouseEvent): void {
-    const target = event.target as HTMLElement;
-    if (target.closest(".file-menu")) {
-      return;
-    }
-    this.closeMenus();
-  }
+  /**
+   * Retained as a no-op hook.
+   *
+   * The in-app File dropdown it used to close is now the native menu bar, but
+   * the call sites are spread across save, export and dialog handlers; keeping
+   * one empty method is tidier than editing fifteen of them.
+   */
+  closeMenus(): void {}
 
   trackRecent(_: number, entry: RecentMapEntry): string {
     return `${entry.name}-${entry.openedAt}`;
@@ -567,25 +680,8 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  exportJsonFromMenu(): void {
-    this.closeMenus();
-    void this.exportJson();
-  }
-
-  exportSvgFromMenu(): void {
-    this.closeMenus();
-    void this.exportSvg();
-  }
-
-  exportFreeplaneFromMenu(): void {
-    this.closeMenus();
-    void this.exportFreeplane();
-  }
-
-  exportPngFromMenu(): void {
-    this.closeMenus();
-    void this.exportPng();
-  }
+  // The export wrappers that used to back the in-app File dropdown are gone;
+  // the native menu calls `exportJson`, `exportSvg` and friends directly.
 
   toggleAboutDialog(): void {
     this.closeMenus();
@@ -1076,14 +1172,6 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
         "input, textarea, select, button, [contenteditable='true']"
       );
     if (inputTarget) {
-      return;
-    }
-
-    if (this.fileMenuOpen()) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        this.closeMenus();
-      }
       return;
     }
 
@@ -2112,6 +2200,8 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
       this.persistRecentMaps(updated);
       return updated;
     });
+    // The native menu holds its own copy of this list, so it has to be rebuilt.
+    void this.pushRecentsToMenu();
   }
 
   private markMapSaved(): void {
