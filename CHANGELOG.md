@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/intentio-software/int-mind-map/compare/v1.5.0...v1.6.0) (2026-07-29)
+
+
+### Features
+
+* add MCP server and native menu bar ([c4522d9](https://github.com/intentio-software/int-mind-map/commit/c4522d9b9a0cc9a58cd34830b8e8d5a4b1707878))
+
 # [1.5.0](https://github.com/intentio-software/int-mind-map/compare/v1.4.0...v1.5.0) (2026-06-08)
 
 
