@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/intentio-software/int-mind-map/compare/v1.6.0...v1.7.0) (2026-07-29)
+
+
+### Features
+
+* export maps as markdown and send them to Intentio Knowledge ([5540efb](https://github.com/intentio-software/int-mind-map/commit/5540efb2a42ff686d08e5ba2fabf7c2701b46edc))
+
 # [1.6.0](https://github.com/intentio-software/int-mind-map/compare/v1.5.0...v1.6.0) (2026-07-29)
 
 
