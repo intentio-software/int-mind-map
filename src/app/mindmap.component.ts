@@ -585,17 +585,6 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     )}. Click to switch to ${nextPreference}.`;
   }
 
-  themePreferenceLabel(): string {
-    switch (this.themePreference()) {
-      case "dark":
-        return "Dark";
-      case "light":
-        return "Light";
-      default:
-        return "System";
-    }
-  }
-
   /**
    * Retained as a no-op hook.
    *

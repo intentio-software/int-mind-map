@@ -442,24 +442,6 @@
   opacity: 0.9;
 }
 
-.theme-preference-control {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.theme-indicator {
-  cursor: default;
-  user-select: none;
-  min-width: 110px;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.theme-indicator i {
-  font-size: 0.85rem;
-}
-
 .sr-only {
   position: absolute;
   width: 1px;

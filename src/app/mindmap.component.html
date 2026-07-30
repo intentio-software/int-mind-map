@@ -34,22 +34,6 @@
       >
         <i class="pi pi-expand" aria-hidden="true"></i>
       </button>
-      <div class="theme-preference-control" role="status" aria-live="polite">
-        <span class="sr-only">Theme preference</span>
-        <div class="theme-indicator pill-button">
-          <i
-            class="pi"
-            [ngClass]="
-              themePreference() === 'system'
-                ? 'pi-desktop'
-                : theme() === 'dark'
-                  ? 'pi-moon'
-                  : 'pi-sun'
-            "
-          ></i>
-          <span>{{ themePreferenceLabel() }}</span>
-        </div>
-      </div>
       <button
         type="button"
         class="theme-toggle"
