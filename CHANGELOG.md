@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/intentio-software/int-mind-map/compare/v1.7.0...v1.7.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* remove theme preference control and related styles ([632e82d](https://github.com/intentio-software/int-mind-map/commit/632e82dc5ccefd576dc4dd49bede83227caf53a1))
+
 # [1.7.0](https://github.com/intentio-software/int-mind-map/compare/v1.6.0...v1.7.0) (2026-07-29)
 
 
