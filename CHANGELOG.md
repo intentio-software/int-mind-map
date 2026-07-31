@@ -1,3 +1,10 @@
+## [1.7.2](https://github.com/intentio-software/int-mind-map/compare/v1.7.1...v1.7.2) (2026-07-31)
+
+
+### Bug Fixes
+
+* show the update toast in front of the About dialog, not behind it ([8e8dbfc](https://github.com/intentio-software/int-mind-map/commit/8e8dbfcffe15312b9476047180f1df566f7cf02d))
+
 ## [1.7.1](https://github.com/intentio-software/int-mind-map/compare/v1.7.0...v1.7.1) (2026-07-30)
 
 
