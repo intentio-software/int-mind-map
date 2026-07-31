@@ -115,7 +115,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> tauri::
             &export_menu,
             &knowledge_menu,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::close_window(app, None)?,
+            &MenuItem::with_id(app, "close-tab", "Close Tab", true, Some("CmdOrCtrl+W"))?,
         ],
     )?;
 
@@ -162,7 +162,13 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> tauri::
         app,
         "Window",
         true,
-        &[&PredefinedMenuItem::minimize(app, None)?, &PredefinedMenuItem::maximize(app, None)?],
+        &[
+            &MenuItem::with_id(app, "next-tab", "Next Tab", true, Some("CmdOrCtrl+Shift+]"))?,
+            &MenuItem::with_id(app, "previous-tab", "Previous Tab", true, Some("CmdOrCtrl+Shift+["))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+        ],
     )?;
 
     let help_menu = Submenu::with_items(

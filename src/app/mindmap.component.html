@@ -8,10 +8,46 @@
   (wheel)="onWheel($event)"
 >
   <div class="top-bar" (click)="closeMenus()">
-    <div class="map-title">
+    <!-- With one map open the title reads as it always did; the tab strip only
+         appears once there is a choice to make. -->
+    <div class="map-title" *ngIf="documents().length === 1">
       <i class="pi pi-sitemap" aria-hidden="true"></i>
       <span>{{ displayedMapName() }}</span>
       <span class="unsaved-indicator" *ngIf="!isSaved()">•</span>
+    </div>
+
+    <div class="tab-strip" role="tablist" *ngIf="documents().length > 1">
+      <button
+        type="button"
+        role="tab"
+        class="tab"
+        *ngFor="let document of documents(); let index = index"
+        [class.active]="index === activeIndex()"
+        [attr.aria-selected]="index === activeIndex()"
+        [title]="tabLabel(document)"
+        (click)="selectTab(index)"
+        (auxclick)="onTabAuxClick(index, $event)"
+      >
+        <span class="tab-label">{{ tabLabel(document) }}</span>
+        <span class="unsaved-indicator" *ngIf="!document.isSaved()">•</span>
+        <span
+          class="tab-close"
+          role="button"
+          aria-label="Close tab"
+          (click)="closeTab(index, $event)"
+        >
+          <i class="pi pi-times" aria-hidden="true"></i>
+        </span>
+      </button>
+      <button
+        type="button"
+        class="tab-new"
+        aria-label="New tab"
+        title="New tab"
+        (click)="newTab()"
+      >
+        <i class="pi pi-plus" aria-hidden="true"></i>
+      </button>
     </div>
     <!-- File, Edit, View and Help now live in the native menu bar. -->
     <div class="top-bar-actions">

@@ -15,9 +15,10 @@ import {
   signal,
   untracked
 } from "@angular/core";
+import type { WritableSignal } from "@angular/core";
 import { UpdaterService } from "./services/updater.service";
 import JSZip from "jszip";
-import { open as openDialog, save } from "@tauri-apps/plugin-dialog";
+import { ask, open as openDialog, save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { openPath } from "@tauri-apps/plugin-opener";
 
@@ -153,6 +154,7 @@ const THEME_CYCLE: ThemePreference[] = ["system", "dark", "light"];
 const MAP_NAME_STORAGE_KEY = "intentio:map-name";
 const MAP_NAME_AUTO_STORAGE_KEY = "intentio:map-name-auto";
 const RECENTS_STORAGE_KEY = "intentio:recent-maps";
+const SESSION_STORAGE_KEY = "intentio:session";
 const DEFAULT_MAP_NAME = "Untitled Mind Map";
 const RECENT_LIMIT = 5;
 const EXPORT_FONT_SIZE = 12;
@@ -163,6 +165,53 @@ const COMMANDS: Record<string, () => string> = {
   "/time": () => new Date().toLocaleTimeString(),
   "/datetime": () => new Date().toLocaleString()
 };
+
+/**
+ * One open map.
+ *
+ * Everything here used to be a field on the component, which is exactly why
+ * there could only ever be one map open. Grouping it makes a tab a value that
+ * can be created, switched to and thrown away; the component reaches the active
+ * one through getters, so the several hundred existing call sites still read
+ * `this.rootNode()` and neither know nor care that there are now several.
+ */
+interface MapDocument {
+  readonly id: string;
+  readonly rootNode: WritableSignal<MindmapNode>;
+  readonly layoutVersion: WritableSignal<number>;
+  readonly selectedNodeId: WritableSignal<string>;
+  readonly selectedNodeIds: WritableSignal<Set<string>>;
+  readonly editingNodeId: WritableSignal<string | null>;
+  readonly viewport: WritableSignal<ViewportState>;
+  readonly mapTitleText: WritableSignal<string>;
+  readonly mapName: WritableSignal<string>;
+  readonly mapNameFollowsRoot: WritableSignal<boolean>;
+  readonly isSaved: WritableSignal<boolean>;
+  /** Undo and redo belong to the map, not to the window. */
+  historyPast: MindmapSnapshot[];
+  historyFuture: MindmapSnapshot[];
+  savedFilePath: string | null;
+  hasNamedSave: boolean;
+  /**
+   * Whether this map has been fitted to the window yet.
+   *
+   * A tab that has never been on screen has no meaningful pan or zoom, so it is
+   * fitted the first time it is shown — otherwise switching to it lands on a
+   * map drawn off the corner of the canvas.
+   */
+  positioned: boolean;
+}
+
+/** A tab as written to storage, so the session survives a restart. */
+interface StoredTab {
+  tree: MindmapNode;
+  viewport?: ViewportState;
+  mapName?: string;
+  mapNameFollowsRoot?: boolean;
+  savedFilePath?: string | null;
+  hasNamedSave?: boolean;
+  isSaved?: boolean;
+}
 
 @Component({
   selector: "app-mindmap",
@@ -193,14 +242,11 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     return preference;
   });
 
-  readonly mapName = signal(this.restoreMapName());
-  readonly mapNameFollowsRoot = signal(this.restoreMapNameAutoFlag());
   readonly displayedMapName = computed(
     () => this.mapName() || this.mapTitleText()
   );
   readonly licensingNotice =
     "Free for personal use – commercial license coming soon.";
-  readonly isSaved = signal(true);
   readonly recentMaps = signal<RecentMapEntry[]>(this.restoreRecentMaps());
   readonly commandSelectionIndex = signal(0);
   readonly commandSuggestionAnchor = signal<{
@@ -228,24 +274,19 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   private editingHistoryCaptured = false;
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   private suppressHistory = false;
-  private historyPast: MindmapSnapshot[] = [];
-  private historyFuture: MindmapSnapshot[] = [];
   private systemPreferenceQuery?: MediaQueryList;
   private systemPreferenceListener?: (event: MediaQueryListEvent) => void;
   private exportNoticeTimer: ReturnType<typeof setTimeout> | null = null;
   /** Detaches the native menu listener when the component goes away. */
   private menuUnlisten: (() => void) | null = null;
-  private savedFilePath: string | null = null;
   private suppressDirty = false;
-  private hasNamedSave = false;
 
-  readonly rootNode = signal<MindmapNode>(this.restoreInitialTree());
-  private readonly layoutVersion = signal(0);
-  readonly selectedNodeId = signal<string>(this.rootNode().id);
-  readonly selectedNodeIds = signal<Set<string>>(
-    new Set([this.rootNode().id])
-  );
-  readonly editingNodeId = signal<string | null>(null);
+  /** Set by `restoreSession` while `documents` is being initialised. */
+  private restoredActiveIndex = 0;
+  /** Every open map, in tab order. There is always at least one. */
+  readonly documents = signal<MapDocument[]>(this.restoreSession());
+  readonly activeIndex = signal(this.restoredActiveIndex);
+
   readonly canvasSize = signal({
     width:
       typeof window !== "undefined" && window.innerWidth
@@ -256,13 +297,6 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
         ? window.innerHeight
         : 720
   });
-  readonly viewport = signal<ViewportState>({
-    offsetX: 0,
-    offsetY: 0,
-    scale: 1,
-    userMoved: false
-  });
-  readonly mapTitleText = signal(this.rootNode().content || "Mind Map");
   readonly isDragging = signal(false);
   readonly aboutDialogOpen = signal(false);
   readonly exportNotice = signal<string | null>(null);
@@ -270,6 +304,75 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly isCheckingUpdates = signal(false);
   private readonly updaterService = inject(UpdaterService);
 
+  /**
+   * The map the window is currently showing.
+   *
+   * Reading `activeIndex()` here is what makes tab switching reactive: any
+   * computed or effect that touches one of the accessors below tracks the
+   * active index too, and so re-runs against the new map when a tab changes.
+   */
+  private get active(): MapDocument {
+    const documents = this.documents();
+    return documents[this.activeIndex()] ?? documents[0];
+  }
+
+  get rootNode(): WritableSignal<MindmapNode> {
+    return this.active.rootNode;
+  }
+  private get layoutVersion(): WritableSignal<number> {
+    return this.active.layoutVersion;
+  }
+  get selectedNodeId(): WritableSignal<string> {
+    return this.active.selectedNodeId;
+  }
+  get selectedNodeIds(): WritableSignal<Set<string>> {
+    return this.active.selectedNodeIds;
+  }
+  get editingNodeId(): WritableSignal<string | null> {
+    return this.active.editingNodeId;
+  }
+  get viewport(): WritableSignal<ViewportState> {
+    return this.active.viewport;
+  }
+  get mapTitleText(): WritableSignal<string> {
+    return this.active.mapTitleText;
+  }
+  get mapName(): WritableSignal<string> {
+    return this.active.mapName;
+  }
+  get mapNameFollowsRoot(): WritableSignal<boolean> {
+    return this.active.mapNameFollowsRoot;
+  }
+  get isSaved(): WritableSignal<boolean> {
+    return this.active.isSaved;
+  }
+
+  // Plain fields rather than signals, as before — nothing renders from them
+  // directly, and they are read and written inside the same handlers.
+  private get historyPast(): MindmapSnapshot[] {
+    return this.active.historyPast;
+  }
+  private set historyPast(value: MindmapSnapshot[]) {
+    this.active.historyPast = value;
+  }
+  private get historyFuture(): MindmapSnapshot[] {
+    return this.active.historyFuture;
+  }
+  private set historyFuture(value: MindmapSnapshot[]) {
+    this.active.historyFuture = value;
+  }
+  private get savedFilePath(): string | null {
+    return this.active.savedFilePath;
+  }
+  private set savedFilePath(value: string | null) {
+    this.active.savedFilePath = value;
+  }
+  private get hasNamedSave(): boolean {
+    return this.active.hasNamedSave;
+  }
+  private set hasNamedSave(value: boolean) {
+    this.active.hasNamedSave = value;
+  }
 
   readonly layout = computed<LayoutResult>(() => {
     this.layoutVersion();
@@ -432,6 +535,15 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
       case "new":
         this.handleNewMap();
         break;
+      case "close-tab":
+        void this.closeTab(this.activeIndex());
+        break;
+      case "next-tab":
+        this.cycleTab(1);
+        break;
+      case "previous-tab":
+        this.cycleTab(-1);
+        break;
       case "open":
         this.triggerOpenDialog();
         break;
@@ -535,10 +647,10 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngAfterViewInit(): void {
-    queueMicrotask(() => {
-      this.fitToScreen();
-      this.centerCurrentSelection();
-    });
+    // The tab that was active when the session was saved still needs fitting
+    // the first time round, exactly as the single map used to.
+    this.active.positioned = false;
+    this.showActiveDocument();
   }
 
   ngOnDestroy(): void {
@@ -610,31 +722,45 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
 
   handleNewMap(): void {
     this.closeMenus();
-    this.recordSnapshot();
-    this.savedFilePath = null;
-    this.hasNamedSave = false;
-    this.runWithoutDirty(() => {
-      const root = this.createRoot();
-      this.rootNode.set(root);
-      this.mapTitleText.set(root.content || "Mind Map");
-      this.selectNode(root.id);
-      this.viewport.set({
-        offsetX: 0,
-        offsetY: 0,
-        scale: 1,
-        userMoved: false
-      });
-      this.editingNodeId.set(null);
-      this.bumpLayoutVersion();
-    });
-    this.enableAutoMapName();
-    this.isSaved.set(false);
+    this.newTab();
+  }
+
+  /**
+   * True for a tab that has never been touched.
+   *
+   * Opening a map into an untouched tab rather than beside it is what stops a
+   * blank tab hanging around after every open, in the way a browser reuses the
+   * new-tab page.
+   */
+  private isPristine(document: MapDocument): boolean {
+    return (
+      !document.hasNamedSave &&
+      !document.savedFilePath &&
+      document.isSaved() &&
+      !document.rootNode().children.length &&
+      !document.rootNode().content.trim()
+    );
+  }
+
+  /** Put a map on screen in its own tab, reusing an untouched one if there is one. */
+  private openInTab(
+    tree: MindmapNode,
+    options: { mapName?: string; markSaved?: boolean } = {}
+  ): void {
+    if (!this.isPristine(this.active)) {
+      this.commitActiveEdit();
+      this.documents.update((documents) => [
+        ...documents,
+        this.createDocument({ tree: this.createRoot() })
+      ]);
+      this.activeIndex.set(this.documents().length - 1);
+    }
+    this.loadMapFromTree(tree, options);
   }
 
   openRecentMap(entry: RecentMapEntry): void {
     this.closeMenus();
-    this.recordSnapshot();
-    this.loadMapFromTree(entry.tree, { mapName: entry.name, markSaved: true });
+    this.openInTab(entry.tree, { mapName: entry.name, markSaved: true });
     this.storeRecentMap(entry.name, entry.tree);
     this.hasNamedSave = true;
   }
@@ -1164,6 +1290,18 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
 
   @HostListener("window:keydown", ["$event"])
   handleKey(event: KeyboardEvent): void {
+    // Jumping to a tab by number is handled here rather than in the native menu
+    // because nine more menu items to hold nine accelerators is not worth it.
+    // It runs ahead of the editing checks below: a modified key is never text.
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && /^[1-9]$/.test(event.key)) {
+      const index = Number(event.key) - 1;
+      if (index < this.documents().length) {
+        event.preventDefault();
+        this.selectTab(index);
+        return;
+      }
+    }
+
     if (this.aboutDialogOpen()) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -1451,8 +1589,7 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
         const parsed = JSON.parse(reader.result as string) as MindmapNode;
         const normalized = this.normalizeTree(parsed);
         const name = this.extractFileName(file.name);
-        this.recordSnapshot();
-        this.loadMapFromTree(normalized, { mapName: name, markSaved: true });
+        this.openInTab(normalized, { mapName: name, markSaved: true });
         this.savedFilePath = null;
         this.hasNamedSave = true;
         this.storeRecentMap(name, normalized);
@@ -2456,58 +2593,15 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     this.setMapName(nextName);
   }
 
-  private persistMapName(name: string): void {
-    if (!this.canUseStorage()) {
-      return;
-    }
-    try {
-      window.localStorage.setItem(MAP_NAME_STORAGE_KEY, name);
-    } catch (error) {
-      console.warn("Failed to persist map name", error);
-    }
+  // Both of these belong to a tab now, so they ride along with the session
+  // rather than in a key of their own. The parameters are kept so the call
+  // sites read the same.
+  private persistMapName(_name: string): void {
+    this.schedulePersist();
   }
 
-  private persistMapNameAutoFlag(follows: boolean): void {
-    if (!this.canUseStorage()) {
-      return;
-    }
-    try {
-      window.localStorage.setItem(
-        MAP_NAME_AUTO_STORAGE_KEY,
-        follows ? "1" : "0"
-      );
-    } catch (error) {
-      console.warn("Failed to persist map naming preference", error);
-    }
-  }
-
-  private restoreMapName(): string {
-    if (!this.canUseStorage()) {
-      return DEFAULT_MAP_NAME;
-    }
-    try {
-      const stored = window.localStorage.getItem(MAP_NAME_STORAGE_KEY);
-      return stored?.trim().length ? stored : DEFAULT_MAP_NAME;
-    } catch (error) {
-      console.warn("Failed to restore map name", error);
-      return DEFAULT_MAP_NAME;
-    }
-  }
-
-  private restoreMapNameAutoFlag(): boolean {
-    if (!this.canUseStorage()) {
-      return true;
-    }
-    try {
-      const stored = window.localStorage.getItem(MAP_NAME_AUTO_STORAGE_KEY);
-      if (stored === "0") {
-        return false;
-      }
-      return true;
-    } catch (error) {
-      console.warn("Failed to restore map naming preference", error);
-      return true;
-    }
+  private persistMapNameAutoFlag(_follows: boolean): void {
+    this.schedulePersist();
   }
 
   private extractFileName(rawName?: string): string {
@@ -2898,20 +2992,235 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     this.restoreSnapshot(next);
   }
 
-  private restoreInitialTree(): MindmapNode {
+  // ---------------------------------------------------------------------------
+  // tabs
+  // ---------------------------------------------------------------------------
+
+  private createDocument(init: {
+    tree: MindmapNode;
+    mapName?: string;
+    mapNameFollowsRoot?: boolean;
+    savedFilePath?: string | null;
+    hasNamedSave?: boolean;
+    isSaved?: boolean;
+    viewport?: ViewportState;
+  }): MapDocument {
+    const tree = init.tree;
+    return {
+      id: `tab-${Math.random().toString(36).slice(2, 10)}`,
+      rootNode: signal(tree),
+      layoutVersion: signal(0),
+      selectedNodeId: signal(tree.id),
+      selectedNodeIds: signal(new Set([tree.id])),
+      editingNodeId: signal<string | null>(null),
+      viewport: signal<ViewportState>(
+        init.viewport ?? { offsetX: 0, offsetY: 0, scale: 1, userMoved: false }
+      ),
+      mapTitleText: signal(tree.content || "Mind Map"),
+      mapName: signal(init.mapName?.trim() || DEFAULT_MAP_NAME),
+      mapNameFollowsRoot: signal(init.mapNameFollowsRoot ?? true),
+      isSaved: signal(init.isSaved ?? true),
+      historyPast: [],
+      historyFuture: [],
+      savedFilePath: init.savedFilePath ?? null,
+      hasNamedSave: init.hasNamedSave ?? false,
+      positioned: !!init.viewport
+    };
+  }
+
+  /**
+   * Bring the active map into view if it has never been shown.
+   *
+   * Deferred a microtask so the layout for the newly active map has been
+   * computed before anything tries to measure it.
+   */
+  private showActiveDocument(): void {
+    const document = this.active;
+    if (document.positioned) {
+      return;
+    }
+    document.positioned = true;
+    queueMicrotask(() => {
+      this.fitToScreen();
+      this.centerCurrentSelection();
+    });
+  }
+
+  /** The label on a tab: the map's name, or its root text while it has none. */
+  tabLabel(document: MapDocument): string {
+    return document.mapName() || document.mapTitleText() || DEFAULT_MAP_NAME;
+  }
+
+  selectTab(index: number): void {
+    if (index < 0 || index >= this.documents().length) {
+      return;
+    }
+    // Leaving a node mid-edit would strand an open textarea on a hidden map.
+    this.commitActiveEdit();
+    this.activeIndex.set(index);
+    this.showActiveDocument();
+    this.schedulePersist();
+  }
+
+  /** Open a new, empty map in a new tab. */
+  newTab(): void {
+    this.commitActiveEdit();
+    const document = this.createDocument({ tree: this.createRoot() });
+    this.documents.update((documents) => [...documents, document]);
+    this.activeIndex.set(this.documents().length - 1);
+    this.showActiveDocument();
+    this.schedulePersist();
+  }
+
+  /**
+   * Close a tab, asking first if it holds unsaved work.
+   *
+   * Closing the last one leaves an empty map rather than an empty window,
+   * because a window with no map in it has nothing to do.
+   */
+  async closeTab(index: number, event?: Event): Promise<void> {
+    event?.stopPropagation();
+    const documents = this.documents();
+    const document = documents[index];
+    if (!document) {
+      return;
+    }
+
+    if (!document.isSaved() && !(await this.confirmDiscard(document))) {
+      return;
+    }
+
+    if (documents.length === 1) {
+      this.documents.set([this.createDocument({ tree: this.createRoot() })]);
+      this.activeIndex.set(0);
+      this.schedulePersist();
+      return;
+    }
+
+    const remaining = documents.filter((_, position) => position !== index);
+    this.documents.set(remaining);
+    // Stay where you were; if the closed tab was at or before the active one,
+    // step back so the same map stays in front.
+    const activeIndex = this.activeIndex();
+    this.activeIndex.set(
+      Math.max(0, Math.min(activeIndex > index ? activeIndex - 1 : activeIndex, remaining.length - 1))
+    );
+    this.schedulePersist();
+  }
+
+  private async confirmDiscard(document: MapDocument): Promise<boolean> {
+    const name = this.tabLabel(document);
+    try {
+      return await ask(`"${name}" has unsaved changes. Close it anyway?`, {
+        title: "Close tab",
+        kind: "warning",
+        okLabel: "Close without saving",
+        cancelLabel: "Keep it open"
+      });
+    } catch {
+      // Outside Tauri there is no native dialog; the browser's own will do.
+      if (typeof window !== "undefined" && typeof window.confirm === "function") {
+        return window.confirm(`"${name}" has unsaved changes. Close it anyway?`);
+      }
+      return true;
+    }
+  }
+
+  /** Middle-click closes a tab, as it does everywhere else. */
+  onTabAuxClick(index: number, event: MouseEvent): void {
+    if (event.button === 1) {
+      event.preventDefault();
+      void this.closeTab(index, event);
+    }
+  }
+
+  /** Cmd+Alt+arrow / Ctrl+Tab style cycling, wrapping at both ends. */
+  cycleTab(delta: number): void {
+    const count = this.documents().length;
+    if (count < 2) {
+      return;
+    }
+    this.selectTab((this.activeIndex() + delta + count) % count);
+  }
+
+  /** Finish any in-progress node edit before the view changes underneath it. */
+  private commitActiveEdit(): void {
+    if (this.editingNodeId()) {
+      this.editingNodeId.set(null);
+    }
+  }
+
+  private restoreSession(): MapDocument[] {
+    const fresh = () => [this.createDocument({ tree: this.createRoot() })];
     if (!this.canUseStorage()) {
-      return this.createRoot();
+      return fresh();
     }
     try {
-      const cached = window.localStorage.getItem(STORAGE_KEY);
-      if (!cached) {
-        return this.createRoot();
+      const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { tabs?: StoredTab[]; activeIndex?: number };
+        const documents = (parsed.tabs ?? [])
+          .filter((tab) => tab && tab.tree)
+          .map((tab) =>
+            this.createDocument({
+              tree: this.normalizeTree(tab.tree),
+              mapName: tab.mapName,
+              mapNameFollowsRoot: tab.mapNameFollowsRoot,
+              savedFilePath: tab.savedFilePath ?? null,
+              hasNamedSave: tab.hasNamedSave,
+              isSaved: tab.isSaved,
+              viewport: tab.viewport
+            })
+          );
+        if (documents.length) {
+          this.restoredActiveIndex = Math.max(
+            0,
+            Math.min(parsed.activeIndex ?? 0, documents.length - 1)
+          );
+          return documents;
+        }
       }
-      const parsed = JSON.parse(cached) as MindmapNode;
-      return this.normalizeTree(parsed);
+
+      // A map cached by a version that only knew about one. Carried over rather
+      // than dropped: it is whatever the user had open last.
+      const cached = window.localStorage.getItem(STORAGE_KEY);
+      if (cached) {
+        const name = window.localStorage.getItem(MAP_NAME_STORAGE_KEY);
+        return [
+          this.createDocument({
+            tree: this.normalizeTree(JSON.parse(cached) as MindmapNode),
+            mapName: name ?? undefined,
+            mapNameFollowsRoot:
+              window.localStorage.getItem(MAP_NAME_AUTO_STORAGE_KEY) !== "0"
+          })
+        ];
+      }
     } catch (error) {
-      console.warn("Failed to restore cached mind map", error);
-      return this.createRoot();
+      console.warn("Failed to restore the session", error);
+    }
+    return fresh();
+  }
+
+  private persistSession(): void {
+    if (!this.canUseStorage()) {
+      return;
+    }
+    try {
+      const tabs: StoredTab[] = this.documents().map((document) => ({
+        tree: document.rootNode(),
+        viewport: document.viewport(),
+        mapName: document.mapName(),
+        mapNameFollowsRoot: document.mapNameFollowsRoot(),
+        savedFilePath: document.savedFilePath,
+        hasNamedSave: document.hasNamedSave,
+        isSaved: document.isSaved()
+      }));
+      window.localStorage.setItem(
+        SESSION_STORAGE_KEY,
+        JSON.stringify({ tabs, activeIndex: this.activeIndex() })
+      );
+    } catch (error) {
+      console.warn("Failed to persist the session", error);
     }
   }
 
@@ -2923,21 +3232,9 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
       clearTimeout(this.persistTimer);
     }
     this.persistTimer = window.setTimeout(
-      () => this.persistTree(),
+      () => this.persistSession(),
       PERSIST_DEBOUNCE
     );
-  }
-
-  private persistTree(): void {
-    if (!this.canUseStorage()) {
-      return;
-    }
-    try {
-      const payload = JSON.stringify(this.rootNode());
-      window.localStorage.setItem(STORAGE_KEY, payload);
-    } catch (error) {
-      console.warn("Failed to persist mind map", error);
-    }
   }
 
   private canUseStorage(): boolean {
