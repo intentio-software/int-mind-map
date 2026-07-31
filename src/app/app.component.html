@@ -1,4 +1,7 @@
-<p-toast position="bottom-right">
+<!-- The About dialog's backdrop sits at z-index 3000 and the export notice at
+     3200. PrimeNG's default toast layer is well below both, which put the update
+     toast behind the blur instead of in front of it. -->
+<p-toast position="bottom-right" [baseZIndex]="4000">
   <ng-template #message let-message>
     <div class="update-toast">
       <span class="p-toast-message-icon pi pi-info-circle"></span>
