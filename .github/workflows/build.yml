@@ -38,9 +38,12 @@ jobs:
         with:
           targets: ${{ matrix.rust-targets }}
 
+      # Two independent cargo roots: the app, and the standalone MCP crate.
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            crates/int-mindmap-mcp
 
       - name: Install Linux system dependencies
         if: matrix.os == 'ubuntu-22.04'
@@ -54,16 +57,51 @@ jobs:
 
       - run: npm ci
 
-      - name: Verify signing key is configured
+      # Both secrets are validated before anything is compiled. A malformed one
+      # otherwise surfaces only at the signing step, after a multi-minute build.
+      - name: Verify signing key is usable
         shell: bash
         run: |
           if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is not set. Set it to the base64-encoded content of your .key file."
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set. It must be the raw contents of your .tauri/*.key file."
             exit 1
           fi
-          echo "Signing key present (length: ${#TAURI_SIGNING_PRIVATE_KEY})"
+          # The .key file is already base64; decoding it once must yield the
+          # two-line signing key. Double-encoding it is the easy mistake, and it
+          # decodes to a single line of base64 instead.
+          decoded=$(printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" | base64 -d 2>/dev/null | head -1)
+          case "$decoded" in
+            *"secret key"*)
+              echo "Signing key decodes correctly." ;;
+            *)
+              echo "::error::TAURI_SIGNING_PRIVATE_KEY does not decode to a signing key. Use the raw contents of the .key file (already base64) — not 'base64' of that file, and with no trailing newline."
+              exit 1 ;;
+          esac
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+
+      - name: Verify Apple certificate password
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "No Apple certificate configured — the macOS build will be unsigned."
+            exit 0
+          fi
+          printf '%s' "$APPLE_CERTIFICATE" | base64 -d > /tmp/cert.p12 2>/dev/null || {
+            echo "::error::APPLE_CERTIFICATE is not valid base64. Use: base64 -i cert.p12 | tr -d '\n'"
+            exit 1
+          }
+          if ! openssl pkcs12 -in /tmp/cert.p12 -nokeys -passin pass:"$APPLE_CERTIFICATE_PASSWORD" -legacy >/dev/null 2>&1; then
+            rm -f /tmp/cert.p12
+            echo "::error::APPLE_CERTIFICATE_PASSWORD does not open APPLE_CERTIFICATE. Re-export the .p12 with a password you record, and set both secrets together."
+            exit 1
+          fi
+          rm -f /tmp/cert.p12
+          echo "Apple certificate and password match."
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
 
       - name: Get or create draft release
         id: release
@@ -97,6 +135,51 @@ jobs:
         with:
           releaseId: ${{ steps.release.outputs.id }}
           args: ${{ matrix.args }}
+
+      # The MCP server ships as its own binary rather than inside the app bundle.
+      # It has to be on PATH to be registered with an agent, and burying it in
+      # Contents/Resources would not put it there. Built per platform so the
+      # universal macOS app does not hand Intel users an arm64-only binary.
+      #
+      # Unlike Knowledge and Tasks this crate is not a workspace member — the
+      # app deliberately has no root workspace — so it is built by manifest path
+      # and its artifacts land under its own target directory.
+      - name: Build MCP server
+        shell: bash
+        env:
+          MANIFEST: crates/int-mindmap-mcp/Cargo.toml
+          OUT: crates/int-mindmap-mcp/target
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            cargo build --release --manifest-path "$MANIFEST" --target aarch64-apple-darwin
+            cargo build --release --manifest-path "$MANIFEST" --target x86_64-apple-darwin
+            lipo -create -output int-mindmap-mcp \
+              "$OUT/aarch64-apple-darwin/release/int-mindmap-mcp" \
+              "$OUT/x86_64-apple-darwin/release/int-mindmap-mcp"
+            tar -czf int-mindmap-mcp-macos-universal.tar.gz int-mindmap-mcp
+          elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cargo build --release --manifest-path "$MANIFEST"
+            7z a int-mindmap-mcp-windows-x86_64.zip "./$OUT/release/int-mindmap-mcp.exe"
+          else
+            cargo build --release --manifest-path "$MANIFEST"
+            tar -czf int-mindmap-mcp-linux-x86_64.tar.gz -C "$OUT/release" int-mindmap-mcp
+          fi
+
+      - name: Attach MCP server to release
+        shell: bash
+        # Only one archive exists per platform. Globbing both patterns at once
+        # makes the unmatched one expand to a literal filename, which fails the
+        # whole upload — so collect with nullglob and upload what is actually there.
+        run: |
+          shopt -s nullglob
+          files=(int-mindmap-mcp-*.tar.gz int-mindmap-mcp-*.zip)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::warning::no MCP archive was produced on ${{ matrix.os }}"
+            exit 0
+          fi
+          gh release upload ${{ steps.release.outputs.tag }} "${files[@]}" --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish:
     needs: build
