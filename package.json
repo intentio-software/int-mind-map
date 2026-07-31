@@ -1,6 +1,6 @@
 {
   "name": "int-mind-map",
-  "version": "1.7.2",
+  "version": "1.8.0",
   "description": "Intentio Mind Map — a fast, focused mind mapping tool with MCP built in.",
   "scripts": {
     "ng": "ng",

@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/intentio-software/int-mind-map/compare/v1.7.2...v1.8.0) (2026-07-31)
+
+
+### Features
+
+* open several maps at once in tabs ([f609c40](https://github.com/intentio-software/int-mind-map/commit/f609c409a705c3d5309de5bff8d72cb76bea3156))
+
 ## [1.7.2](https://github.com/intentio-software/int-mind-map/compare/v1.7.1...v1.7.2) (2026-07-31)
 
 
