@@ -152,6 +152,22 @@
             ></line>
           </g>
 
+          <!-- A node that produced a task says so, and says whether it is done.
+               Small and on the edge: the map is still a map. -->
+          <g
+            *ngIf="item.node.taskId"
+            class="node-task-marker"
+            [class.done]="item.node.taskDone"
+          >
+            <circle cx="14" [attr.cy]="nodeHeightFor(item.node) / 2" r="6"></circle>
+            <path
+              *ngIf="item.node.taskDone"
+              [attr.d]="'M 11 ' + (nodeHeightFor(item.node) / 2) + ' l 2.2 2.2 l 4.2 -4.6'"
+              fill="none"
+            ></path>
+            <title>{{ item.node.taskDone ? "Task done in Intentio Tasks" : "Task in Intentio Tasks" }}</title>
+          </g>
+
           <foreignObject
             [attr.width]="nodeWidth"
             [attr.height]="nodeHeightFor(item.node)"
@@ -199,7 +215,8 @@
         (mousedown)="$event.preventDefault()"
         (click)="applyCommandSuggestion(suggestion)"
       >
-        {{ suggestion }}
+        <span class="command-name">{{ suggestion }}</span>
+        <span class="command-hint" *ngIf="commandHint(suggestion)">{{ commandHint(suggestion) }}</span>
       </button>
     </div>
   </ng-container>

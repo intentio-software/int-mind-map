@@ -1,4 +1,5 @@
 mod menu;
+pub mod tasks_bridge;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -14,7 +15,12 @@ pub fn run() {
             menu::install(app.handle())?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![menu::set_recent_maps])
+        .invoke_handler(tauri::generate_handler![
+            menu::set_recent_maps,
+            tasks_bridge::tasks_available,
+            tasks_bridge::create_task_from_node,
+            tasks_bridge::linked_task
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

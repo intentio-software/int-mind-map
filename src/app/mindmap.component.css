@@ -737,3 +737,30 @@
 .hidden-input {
   display: none;
 }
+
+/* A node that produced a task in Intentio Tasks. */
+.node-task-marker circle {
+  fill: none;
+  stroke: var(--brand-orange);
+  stroke-width: 1.6;
+}
+
+.node-task-marker.done circle {
+  fill: var(--brand-orange);
+  stroke: var(--brand-orange);
+}
+
+.node-task-marker path {
+  stroke: #fff;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* An action command earns a word of explanation; the text-inserting ones
+   speak for themselves. */
+.command-suggestion .command-hint {
+  margin-left: 0.5rem;
+  opacity: 0.6;
+  font-size: 0.78em;
+}

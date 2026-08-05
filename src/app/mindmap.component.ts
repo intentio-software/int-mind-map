@@ -55,6 +55,10 @@ interface MindmapNode {
   x?: number;
   y?: number;
   collapsed?: boolean;
+  /** A task in Intentio Tasks created from this node, if there is one. */
+  taskId?: string;
+  /** Last known state of that task, refreshed when the map is opened. */
+  taskDone?: boolean;
 }
 
 interface ClipboardNode {
@@ -160,6 +164,12 @@ const RECENT_LIMIT = 5;
 const EXPORT_FONT_SIZE = 12;
 const EXPORT_LINE_HEIGHT = 16;
 const APP_VERSION_FALLBACK = "v0.1.0";
+/// Commands that do something rather than insert text. The value is what the
+/// suggestion popup shows beside the command.
+const ACTION_COMMANDS: Record<string, string> = {
+  "/task": "Create a task in Intentio Tasks"
+};
+
 const COMMANDS: Record<string, () => string> = {
   "/date": () => new Date().toLocaleDateString(),
   "/time": () => new Date().toLocaleTimeString(),
@@ -651,6 +661,7 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     // the first time round, exactly as the single map used to.
     this.active.positioned = false;
     this.showActiveDocument();
+    void this.refreshLinkedTasks();
   }
 
   ngOnDestroy(): void {
@@ -756,6 +767,7 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
       this.activeIndex.set(this.documents().length - 1);
     }
     this.loadMapFromTree(tree, options);
+    void this.refreshLinkedTasks();
   }
 
   openRecentMap(entry: RecentMapEntry): void {
@@ -1213,6 +1225,11 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
           this.applyCommandSuggestion(selected);
           return;
         }
+      }
+      if (isCommand && trimmed.split(/\s+/)[0] === "/task") {
+        event.preventDefault();
+        void this.createTaskFromNode(editingId, trimmed.slice("/task".length).trim());
+        return;
       }
       if (isCommand && commandHandler) {
         event.preventDefault();
@@ -2508,6 +2525,8 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
       content: this.clampContent(node.content ?? ""),
       parentId,
       collapsed: !!node.collapsed,
+      taskId: node.taskId,
+      taskDone: node.taskDone,
       children: (node.children ?? []).map((child) =>
         this.normalizeTree(child, id)
       )
@@ -2614,7 +2633,16 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private getCommandMatches(input: string): string[] {
-    return Object.keys(COMMANDS).filter((cmd) => cmd.startsWith(input));
+    // Only the command word is matched, so `/task write the spec` keeps
+    // offering `/task` while the title is being typed.
+    const word = input.split(/\s+/)[0];
+    const all = [...Object.keys(COMMANDS), ...Object.keys(ACTION_COMMANDS)];
+    return all.filter((cmd) => cmd.startsWith(word));
+  }
+
+  /** The one-line explanation shown next to a command in the popup. */
+  commandHint(command: string): string {
+    return ACTION_COMMANDS[command] ?? "";
   }
 
   private getCommandMatch(input: string): string | null {
@@ -3247,7 +3275,108 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
       content: this.clampContent(node.content ?? ""),
       parentId: parentId ?? node.parentId,
       collapsed: !!node.collapsed,
+      taskId: node.taskId,
+      taskDone: node.taskDone,
       children: node.children.map((child) => this.cloneTree(child, node.id))
     };
   }
+  // ---------------------------------------------------------------------------
+  // Intentio Tasks
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Turn a node into a task.
+   *
+   * `/task write the spec` uses that title. Bare `/task` uses whatever the node
+   * said before the command was typed, which is the common case: you look at a
+   * node, decide it is work, and say so without retyping it.
+   */
+  private async createTaskFromNode(nodeId: string, typedTitle: string): Promise<void> {
+    const title = (typedTitle || this.editOriginal || "").trim();
+    if (!title) {
+      this.showExportNotice("Give the node a name first, then /task it.");
+      return;
+    }
+
+    // Put the node back to plain text before anything else, so a failure does
+    // not leave "/task ..." sitting in the map.
+    this.updateNodeContent(nodeId, title);
+    this.commitEditing();
+
+    if (!this.isTauri()) {
+      this.showExportNotice("Tasks can only be created from the desktop app.");
+      return;
+    }
+
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const origin = `mindmap:${this.slugify(this.mapName()) || "map"}#${nodeId}`;
+      const task = await invoke<{ id: string; title: string; done: boolean }>(
+        "create_task_from_node",
+        { title, origin }
+      );
+      const info = this.findNode(nodeId);
+      if (info) {
+        info.node.taskId = task.id;
+        info.node.taskDone = task.done;
+        this.bumpLayoutVersion();
+      }
+      this.showExportNotice(`Sent "${task.title}" to Intentio Tasks`);
+    } catch (error) {
+      this.showExportNotice(String(error));
+    }
+  }
+
+  /**
+   * Bring the map's idea of its tasks back up to date.
+   *
+   * Run when a map is opened rather than continuously: the map is not a task
+   * list, and polling for something the user will look at once is waste.
+   */
+  private async refreshLinkedTasks(): Promise<void> {
+    if (!this.isTauri()) {
+      return;
+    }
+    const linked: MindmapNode[] = [];
+    const walk = (node: MindmapNode) => {
+      if (node.taskId) {
+        linked.push(node);
+      }
+      node.children.forEach(walk);
+    };
+    walk(this.rootNode());
+    if (!linked.length) {
+      return;
+    }
+
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      let changed = false;
+      for (const node of linked) {
+        const task = await invoke<{ id: string; title: string; done: boolean } | null>(
+          "linked_task",
+          { taskId: node.taskId }
+        );
+        // A task deleted in Tasks clears the link rather than leaving a marker
+        // pointing at nothing.
+        const done = task ? task.done : undefined;
+        const taskId = task ? node.taskId : undefined;
+        if (node.taskDone !== done || node.taskId !== taskId) {
+          node.taskDone = done;
+          node.taskId = taskId;
+          changed = true;
+        }
+      }
+      if (changed) {
+        this.runWithoutDirty(() => this.bumpLayoutVersion());
+      }
+    } catch {
+      // Tasks not installed, or not answering. The markers simply stay as they were.
+    }
+  }
+
+  private isTauri(): boolean {
+    return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  }
+
 }
