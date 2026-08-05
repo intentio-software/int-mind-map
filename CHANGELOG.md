@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/intentio-software/int-mind-map/compare/v1.8.0...v1.9.0) (2026-08-05)
+
+
+### Features
+
+* create a task in Intentio Tasks from a node with /task ([2627cc9](https://github.com/intentio-software/int-mind-map/commit/2627cc9086f51894a684c5988a39900ee55da1c9))
+
 # [1.8.0](https://github.com/intentio-software/int-mind-map/compare/v1.7.2...v1.8.0) (2026-07-31)
 
 
