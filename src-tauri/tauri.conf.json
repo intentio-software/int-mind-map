@@ -39,6 +39,26 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "mindmap"
+        ],
+        "name": "Intentio Mind Map",
+        "description": "Intentio mind map",
+        "role": "Editor",
+        "mimeType": "application/json"
+      },
+      {
+        "ext": [
+          "json"
+        ],
+        "name": "JSON document",
+        "description": "Open a mind map saved as JSON",
+        "role": "Viewer",
+        "mimeType": "application/json"
+      }
     ]
   }
 }

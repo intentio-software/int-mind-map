@@ -289,6 +289,8 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   private exportNoticeTimer: ReturnType<typeof setTimeout> | null = null;
   /** Detaches the native menu listener when the component goes away. */
   private menuUnlisten: (() => void) | null = null;
+  /** Detaches the "open this file" listener when the component goes away. */
+  private openFileUnlisten: (() => void) | null = null;
   private suppressDirty = false;
 
   /** Set by `restoreSession` while `documents` is being initialised. */
@@ -490,6 +492,7 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
           getVersion().then(v => this.appVersion.set(`v${v}`))
         );
         void this.connectNativeMenu();
+      void this.connectFileOpen();
       }
     }
   }
@@ -501,6 +504,45 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
    * dispatch runs the existing method — so there is one implementation of
    * "save" or "export as SVG" rather than a native copy and a web copy.
    */
+  /**
+   * Open a map the operating system handed us — double-clicked, dropped on the
+   * icon, or passed on the command line.
+   *
+   * It lands in a tab rather than replacing what is on screen, for the same
+   * reason New Map does: never discard a map the user can see.
+   */
+  private async connectFileOpen(): Promise<void> {
+    if (!this.isTauri()) {
+      return;
+    }
+    try {
+      const { listen } = await import("@tauri-apps/api/event");
+      this.openFileUnlisten = await listen<string>("open-map-file", async (event) => {
+        await this.openMapFromPath(event.payload);
+      });
+    } catch (error) {
+      console.warn("Could not listen for file opens", error);
+    }
+  }
+
+  private async openMapFromPath(path: string): Promise<void> {
+    try {
+      const { readTextFile } = await import("@tauri-apps/plugin-fs");
+      const parsed = JSON.parse(await readTextFile(path)) as MindmapNode;
+      const normalized = this.normalizeTree(parsed);
+      const name = this.extractFileName(path.split(/[\\/]/).pop() ?? "");
+      this.openInTab(normalized, { mapName: name, markSaved: true });
+      this.savedFilePath = path;
+      this.hasNamedSave = true;
+      this.storeRecentMap(name, normalized);
+    } catch (error) {
+      // A .json that is not a map is the common case, given the app now offers
+      // itself for every JSON file. Say so plainly rather than failing.
+      console.warn("Could not open", path, error);
+      this.showExportNotice(`${path.split(/[\\/]/).pop()} is not an Intentio mind map.`);
+    }
+  }
+
   private async connectNativeMenu(): Promise<void> {
     try {
       const { listen } = await import("@tauri-apps/api/event");
@@ -689,6 +731,7 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
       clearTimeout(this.exportNoticeTimer);
     }
     this.menuUnlisten?.();
+    this.openFileUnlisten?.();
     this.menuUnlisten = null;
     this.focusEffectCleanup.destroy();
     this.viewportEffectCleanup.destroy();
