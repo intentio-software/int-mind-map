@@ -1,6 +1,6 @@
 [package]
 name = "int-mind-map"
-version = "1.9.0"
+version = "1.10.0"
 description = "Intentio Mind Map — a fast, focused mind mapping tool with MCP built in."
 authors = ["Intentio Software"]
 edition = "2021"

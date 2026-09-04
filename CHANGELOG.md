@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/intentio-software/int-mind-map/compare/v1.9.0...v1.10.0) (2026-09-04)
+
+
+### Features
+
+* open a map by double-clicking its file ([517279d](https://github.com/intentio-software/int-mind-map/commit/517279d7875450134eef493d16af416c8b1587b8))
+
 # [1.9.0](https://github.com/intentio-software/int-mind-map/compare/v1.8.0...v1.9.0) (2026-08-05)
 
 
