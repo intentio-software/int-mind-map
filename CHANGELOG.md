@@ -1,3 +1,15 @@
+# [1.11.0](https://github.com/intentio-software/int-mind-map/compare/v1.10.0...v1.11.0) (2026-09-08)
+
+
+### Bug Fixes
+
+* say which folders collided when names are not unique ([9969eaf](https://github.com/intentio-software/int-mind-map/commit/9969eafc6010a280142be0203449460a3f7239f9))
+
+
+### Features
+
+* a home folder for maps, that the MCP server follows ([cf25260](https://github.com/intentio-software/int-mind-map/commit/cf25260d1b2cec155c88d19ecee2beec2b980c48))
+
 # [1.10.0](https://github.com/intentio-software/int-mind-map/compare/v1.9.0...v1.10.0) (2026-09-04)
 
 
