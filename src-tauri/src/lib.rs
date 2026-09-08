@@ -119,13 +119,22 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|handle, event| {
-            // macOS sends a double-clicked or dropped file here, including
-            // while the app is already running.
-            if let tauri::RunEvent::Opened { urls } = event {
+        .run(|_handle, _event| {
+            // macOS sends a double-clicked or dropped file through
+            // RunEvent::Opened, including while the app is already running.
+            // The variant only exists on Apple and Android targets, so the arm
+            // has to be compiled away rather than merely never matched —
+            // Windows and Linux take the file as a launch argument instead,
+            // which is handled in setup.
+            #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+            if let tauri::RunEvent::Opened { urls } = _event {
                 for url in urls {
                     if let Ok(path) = url.to_file_path() {
-                        let _ = tauri::Emitter::emit(handle, OPEN_FILE_EVENT, path.to_string_lossy().to_string());
+                        let _ = tauri::Emitter::emit(
+                            _handle,
+                            OPEN_FILE_EVENT,
+                            path.to_string_lossy().to_string(),
+                        );
                     }
                 }
             }
