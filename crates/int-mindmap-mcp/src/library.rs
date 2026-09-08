@@ -174,12 +174,27 @@ impl Library {
             roots.push(LibraryRoot { root });
         }
 
-        let mut names: Vec<String> = roots.iter().map(|root| root.name().to_lowercase()).collect();
-        names.sort();
-        let total = names.len();
-        names.dedup();
-        if names.len() != total {
-            return Err("map folder names must be unique so tools can address them by name".into());
+        // Report exactly which folders collided, by path - "names must be
+        // unique" alone gives no way to tell which of N configured folders
+        // are the problem, especially once that list grows past two or three.
+        let mut by_name: std::collections::BTreeMap<String, Vec<&Path>> = std::collections::BTreeMap::new();
+        for root in &roots {
+            by_name.entry(root.name().to_lowercase()).or_default().push(&root.root);
+        }
+        let collisions: Vec<String> = by_name
+            .into_iter()
+            .filter(|(_, paths)| paths.len() > 1)
+            .map(|(name, paths)| {
+                let listed = paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ");
+                format!("\"{name}\": {listed}")
+            })
+            .collect();
+        if !collisions.is_empty() {
+            return Err(format!(
+                "map folder names must be unique so tools can address them by name - \
+                 these folders share a name: {}",
+                collisions.join("; ")
+            ));
         }
 
         Ok(Library { roots })
