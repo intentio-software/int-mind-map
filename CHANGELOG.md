@@ -1,3 +1,10 @@
+## [1.11.1](https://github.com/intentio-software/int-mind-map/compare/v1.11.0...v1.11.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* the open-file event only exists on Apple targets ([af70b5b](https://github.com/intentio-software/int-mind-map/commit/af70b5b54f56b90753b1ca6d1f6221dcdc545381))
+
 # [1.11.0](https://github.com/intentio-software/int-mind-map/compare/v1.10.0...v1.11.0) (2026-09-08)
 
 
