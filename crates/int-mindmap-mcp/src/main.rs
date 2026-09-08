@@ -54,6 +54,10 @@ fn main() -> ExitCode {
         }
     };
 
+    // Only when following the app: explicit arguments are a deliberate choice
+    // and should not be quietly overridden by whatever the app last recorded.
+    let follows_app = args.is_empty() && std::env::var_os("INT_MINDMAP_DIR").is_none();
+
     let library = match Library::open(&dirs) {
         Ok(library) => library,
         Err(message) => {
@@ -65,7 +69,7 @@ fn main() -> ExitCode {
     // Startup diagnostics go to stderr; stdout carries protocol traffic only.
     eprintln!("[mindmap] serving {} folder(s): {}", dirs.len(), library.names().join(", "));
 
-    match mcp::serve(MapTools::new(library)) {
+    match mcp::serve(MapTools::new(library).following_app(follows_app)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("error: {err}");
@@ -110,10 +114,41 @@ fn parse_args(args: &[String]) -> Result<Option<Vec<PathBuf>>, String> {
         }
     }
 
+    // Nothing given: follow whatever the desktop app records. This is what
+    // lets the server keep working after somebody moves their maps, instead of
+    // serving a path frozen at whenever `claude mcp add` was last run.
     if dirs.is_empty() {
-        return Err("no map folder given".into());
+        dirs = folders_from_app();
+    }
+
+    if dirs.is_empty() {
+        return Err("no map folder given, and the app has not recorded one".into());
     }
     Ok(Some(dirs))
+}
+
+/// Folders the desktop app has recorded, home first.
+///
+/// Read from `~/.intentio/mindmap-libraries.json`, the same shape Tasks uses
+/// for its store location. Missing or unreadable means no folders rather than
+/// an error: the caller reports that better than this can.
+pub fn folders_from_app() -> Vec<PathBuf> {
+    let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) else {
+        return Vec::new();
+    };
+    let path = PathBuf::from(home).join(".intentio").join("mindmap-libraries.json");
+    let Ok(text) = std::fs::read_to_string(path) else { return Vec::new() };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else { return Vec::new() };
+
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(home_dir) = value.get("home").and_then(|v| v.as_str()) {
+        dirs.push(PathBuf::from(home_dir));
+    }
+    if let Some(extra) = value.get("extra").and_then(|v| v.as_array()) {
+        dirs.extend(extra.iter().filter_map(|v| v.as_str()).map(PathBuf::from));
+    }
+    dirs.retain(|dir| dir.is_dir());
+    dirs
 }
 
 /// Expand a leading `~`, which clients routinely pass through unexpanded.

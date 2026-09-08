@@ -12,11 +12,38 @@ use crate::mcp::{opt_bool, opt_str, opt_usize, require_str, ServerInfo, Tool, To
 
 pub struct MapTools {
     library: Library,
+    /// Whether to re-read the app's recorded folders before each call.
+    follows_app: bool,
 }
 
 impl MapTools {
     pub fn new(library: Library) -> Self {
-        MapTools { library }
+        MapTools { library, follows_app: false }
+    }
+
+    /// Follow the desktop app's recorded folders rather than a fixed list.
+    pub fn following_app(mut self, follows: bool) -> Self {
+        self.follows_app = follows;
+        self
+    }
+
+    /// Pick up a folder added or moved since the server started.
+    ///
+    /// Cheap — a small file and a few `is_dir` calls — and it means somebody
+    /// changing where their maps live does not have to know that an MCP server
+    /// exists, let alone restart it. A folder list that fails to open is kept
+    /// as it was: the previous one at least worked.
+    fn refresh(&mut self) {
+        if !self.follows_app {
+            return;
+        }
+        let dirs = crate::folders_from_app();
+        if dirs.is_empty() {
+            return;
+        }
+        if let Ok(library) = Library::open(&dirs) {
+            self.library = library;
+        }
     }
 
     fn library_property(&self) -> Value {
@@ -263,6 +290,7 @@ impl ToolProvider for MapTools {
     }
 
     fn call(&mut self, name: &str, args: &Value) -> Result<ToolOutput, String> {
+        self.refresh();
         if name == "list_libraries" {
             let libraries: Vec<Value> = self
                 .library
