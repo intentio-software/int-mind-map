@@ -266,11 +266,47 @@
   gap: 3px;
   max-width: min(60vw, 720px);
   overflow-x: auto;
-  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  /* A slim scrollbar rather than none. Hiding it entirely left no sign that
+     there were maps past the edge, which is the thing somebody needs to know
+     once more are open than fit. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border, rgba(180, 210, 235, 0.2)) transparent;
 }
 
 .tab-strip::-webkit-scrollbar {
-  display: none;
+  height: 3px;
+}
+
+.tab-strip::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tab-strip::-webkit-scrollbar-thumb {
+  border-radius: 2px;
+  background: var(--border, rgba(180, 210, 235, 0.2));
+}
+
+.tab-strip:hover::-webkit-scrollbar-thumb {
+  background: var(--ink-faint, rgba(180, 210, 235, 0.45));
+}
+
+/* Faded at whichever end has maps behind it, so the strip says which way to
+   look. Set from the component, because CSS cannot ask whether an element is
+   scrolled. */
+.tab-strip.more-left {
+  mask-image: linear-gradient(to right, transparent 0, #000 24px);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 24px);
+}
+
+.tab-strip.more-right {
+  mask-image: linear-gradient(to left, transparent 0, #000 24px);
+  -webkit-mask-image: linear-gradient(to left, transparent 0, #000 24px);
+}
+
+.tab-strip.more-left.more-right {
+  mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
 }
 
 .tab {

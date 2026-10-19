@@ -17,6 +17,10 @@ import {
 } from "@angular/core";
 import type { WritableSignal } from "@angular/core";
 import { UpdaterService } from "./services/updater.service";
+import {
+  ShortcutGroup,
+  ShortcutsDialogComponent
+} from "./shortcuts-dialog.component";
 import JSZip from "jszip";
 import { ask, open as openDialog, save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
@@ -226,7 +230,7 @@ interface StoredTab {
 @Component({
   selector: "app-mindmap",
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, ShortcutsDialogComponent],
   templateUrl: "./mindmap.component.html",
   styleUrls: ["./mindmap.component.css"]
 })
@@ -298,6 +302,9 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   /** Every open map, in tab order. There is always at least one. */
   readonly documents = signal<MapDocument[]>(this.restoreSession());
   readonly activeIndex = signal(this.restoredActiveIndex);
+  /** Whether there are maps past the left or right edge of the strip. */
+  readonly moreTabsLeft = signal(false);
+  readonly moreTabsRight = signal(false);
 
   readonly canvasSize = signal({
     width:
@@ -311,6 +318,50 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
   });
   readonly isDragging = signal(false);
   readonly aboutDialogOpen = signal(false);
+  readonly shortcutsOpen = signal(false);
+
+  /**
+   * What the keyboard does.
+   *
+   * The menu items are left out on purpose: the menu bar already shows those
+   * with their keys beside them. These are the ones that exist only while you
+   * are working on the canvas, which nothing else in the app mentions.
+   */
+  readonly shortcutGroups: ShortcutGroup[] = [
+    {
+      title: "Building a map",
+      shortcuts: [
+        { keys: "Tab", does: "Add a child of the selected node" },
+        { keys: "Enter", does: "Add a sibling below" },
+        { keys: "Shift Enter", does: "Add a sibling above" },
+        { keys: "Double click", does: "Edit a node" },
+        { keys: "Escape", does: "Stop editing without keeping the change" },
+        { keys: "Delete", does: "Remove the selected node and everything under it" }
+      ]
+    },
+    {
+      title: "Moving about",
+      shortcuts: [
+        { keys: "↑ ↓", does: "Move between siblings" },
+        { keys: "Shift ↑ ↓", does: "Reorder the selected node" },
+        { keys: "← →", does: "Move to the parent or the first child" },
+        { keys: "Scroll", does: "Pan the canvas" },
+        { keys: "⌘ Scroll", does: "Zoom in and out" }
+      ]
+    },
+    {
+      title: "Maps and tabs",
+      shortcuts: [
+        { keys: "⌘N", does: "New map in a new tab" },
+        { keys: "⌘O", does: "Open a map" },
+        { keys: "⌘S", does: "Save" },
+        { keys: "⌘W", does: "Close the current tab" },
+        { keys: "⌘1 – ⌘9", does: "Jump to a tab" },
+        { keys: "⌘⇧[ ⌘⇧]", does: "Previous or next tab" },
+        { keys: "⌘0", does: "Fit the map to the screen" }
+      ]
+    }
+  ];
   readonly exportNotice = signal<string | null>(null);
   readonly appVersion = signal(APP_VERSION_FALLBACK);
   readonly isCheckingUpdates = signal(false);
@@ -1360,6 +1411,12 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
         this.selectTab(index);
         return;
       }
+    }
+
+    if (this.shortcutsOpen() && event.key === "Escape") {
+      event.preventDefault();
+      this.shortcutsOpen.set(false);
+      return;
     }
 
     if (this.aboutDialogOpen()) {
@@ -3131,6 +3188,61 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     this.activeIndex.set(index);
     this.showActiveDocument();
     this.schedulePersist();
+    queueMicrotask(() => this.revealTab(index));
+  }
+
+  /**
+   * Keep the strip usable once more maps are open than fit.
+   *
+   * Three things a strip does not do on its own. It reports which end has maps
+   * behind it, so the fade can say which way to look. It turns a vertical
+   * wheel into horizontal movement, because a mouse has no sideways and a
+   * strip is where people expect that to work. And it brings the current map
+   * into view, which matters most for the keyboard: jumping to the ninth map
+   * and landing on one you cannot see is worse than not jumping.
+   */
+  onTabStripScroll(event: Event): void {
+    this.measureTabStrip(event.target as HTMLElement);
+  }
+
+  onTabStripWheel(event: WheelEvent): void {
+    const strip = event.currentTarget as HTMLElement;
+    if (strip.scrollWidth <= strip.clientWidth) {
+      return;
+    }
+    // A trackpad already sends deltaX; only stand in for a wheel that cannot.
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
+      return;
+    }
+    event.preventDefault();
+    strip.scrollLeft += event.deltaY;
+  }
+
+  private measureTabStrip(strip: HTMLElement | null): void {
+    if (!strip) {
+      return;
+    }
+    const end = strip.scrollWidth - strip.clientWidth;
+    this.moreTabsLeft.set(strip.scrollLeft > 1);
+    // A pixel of slack: sub-pixel layout means scrollLeft rarely reaches the
+    // end exactly, and a fade that never quite clears looks broken.
+    this.moreTabsRight.set(strip.scrollLeft < end - 1);
+  }
+
+  private revealTab(index: number): void {
+    const strip = document.querySelector<HTMLElement>(".tab-strip");
+    const tab = strip?.querySelectorAll<HTMLElement>(".tab")[index];
+    if (!strip || !tab) {
+      return;
+    }
+    const left = tab.offsetLeft;
+    const right = left + tab.offsetWidth;
+    if (left < strip.scrollLeft) {
+      strip.scrollTo({ left: Math.max(0, left - 8), behavior: "smooth" });
+    } else if (right > strip.scrollLeft + strip.clientWidth) {
+      strip.scrollTo({ left: right - strip.clientWidth + 8, behavior: "smooth" });
+    }
+    this.measureTabStrip(strip);
   }
 
   /** Open a new, empty map in a new tab. */

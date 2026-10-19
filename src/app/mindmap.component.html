@@ -16,7 +16,15 @@
       <span class="unsaved-indicator" *ngIf="!isSaved()">•</span>
     </div>
 
-    <div class="tab-strip" role="tablist" *ngIf="documents().length > 1">
+    <div
+      class="tab-strip"
+      role="tablist"
+      *ngIf="documents().length > 1"
+      [class.more-left]="moreTabsLeft()"
+      [class.more-right]="moreTabsRight()"
+      (scroll)="onTabStripScroll($event)"
+      (wheel)="onTabStripWheel($event)"
+    >
       <button
         type="button"
         role="tab"
@@ -86,6 +94,16 @@
                 : 'pi-sun'
           "
         ></i>
+      </button>
+      <button
+        type="button"
+        class="map-action shortcuts-button"
+        aria-label="Keyboard shortcuts"
+        title="Keyboard shortcuts"
+        aria-haspopup="dialog"
+        (click)="shortcutsOpen.set(true)"
+      >
+        <i class="pi pi-question-circle" aria-hidden="true"></i>
       </button>
       <button
         type="button"
@@ -302,3 +320,9 @@
     <span>{{ notice }}</span>
   </div>
 </div>
+
+<app-shortcuts-dialog
+  *ngIf="shortcutsOpen()"
+  [groups]="shortcutGroups"
+  (closed)="shortcutsOpen.set(false)"
+></app-shortcuts-dialog>
