@@ -260,6 +260,46 @@
 
 /* The tab strip lives in the same floating bar the title used to occupy, so
    nothing else on the canvas has to move to make room for it. */
+/* Something to click.
+ *
+ * macOS draws overlay scrollbars, so one is invisible until you are already
+ * scrolling - no use for telling somebody there is more to see. These sit at
+ * the ends of the strip and exist only when they would do something. */
+.tab-strip-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.tab-arrow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 18px;
+  border: none;
+  background: linear-gradient(to right, rgba(3, 24, 45, 0.95), rgba(3, 24, 45, 0.6));
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.tab-arrow:hover {
+  color: #fff;
+}
+
+.tab-arrow.left {
+  left: 0;
+}
+
+.tab-arrow.right {
+  right: 0;
+  background: linear-gradient(to left, rgba(3, 24, 45, 0.95), rgba(3, 24, 45, 0.6));
+}
+
 .tab-strip {
   display: flex;
   align-items: center;
@@ -313,7 +353,11 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex: 0 0 auto;
+  /* Shrink before scrolling, as a browser does. These never shrank at all, so
+     a sixth map open meant scrolling where the strip had room to simply fit
+     them. 96px keeps a name legible; past that it scrolls. */
+  flex: 1 1 auto;
+  min-width: 96px;
   max-width: 190px;
   padding: 4px 6px 4px 10px;
   border: 1px solid transparent;

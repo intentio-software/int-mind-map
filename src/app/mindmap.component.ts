@@ -754,6 +754,7 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     // the first time round, exactly as the single map used to.
     this.active.positioned = false;
     this.showActiveDocument();
+    queueMicrotask(() => this.watchTabStrip());
     void this.refreshLinkedTasks();
   }
 
@@ -3216,6 +3217,33 @@ export class MindmapComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     event.preventDefault();
     strip.scrollLeft += event.deltaY;
+  }
+
+  /** Step the strip along by most of its width. */
+  scrollTabs(direction: 1 | -1): void {
+    const strip = document.querySelector<HTMLElement>(".tab-strip");
+    if (!strip) {
+      return;
+    }
+    // Not a whole screenful: leaving a map or two in common between before and
+    // after is what stops a jump feeling like losing your place.
+    strip.scrollBy({ left: direction * (strip.clientWidth - 80), behavior: "smooth" });
+  }
+
+  /**
+   * Watch the strip, so the arrows are right before anybody touches it.
+   *
+   * Measuring only on scroll was useless: until you had already scrolled,
+   * nothing said there was anywhere to scroll to.
+   */
+  private watchTabStrip(): void {
+    const strip = document.querySelector<HTMLElement>(".tab-strip");
+    if (!strip) {
+      return;
+    }
+    this.measureTabStrip(strip);
+    new ResizeObserver(() => this.measureTabStrip(strip)).observe(strip);
+    new MutationObserver(() => this.measureTabStrip(strip)).observe(strip, { childList: true });
   }
 
   private measureTabStrip(strip: HTMLElement | null): void {

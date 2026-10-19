@@ -16,10 +16,24 @@
       <span class="unsaved-indicator" *ngIf="!isSaved()">•</span>
     </div>
 
+    <div class="tab-strip-wrap" *ngIf="documents().length > 1">
+    <button
+      type="button"
+      class="tab-arrow left"
+      *ngIf="moreTabsLeft()"
+      title="Earlier maps"
+      (click)="scrollTabs(-1)"
+    >‹</button>
+    <button
+      type="button"
+      class="tab-arrow right"
+      *ngIf="moreTabsRight()"
+      title="Later maps"
+      (click)="scrollTabs(1)"
+    >›</button>
     <div
       class="tab-strip"
       role="tablist"
-      *ngIf="documents().length > 1"
       [class.more-left]="moreTabsLeft()"
       [class.more-right]="moreTabsRight()"
       (scroll)="onTabStripScroll($event)"
@@ -56,6 +70,7 @@
       >
         <i class="pi pi-plus" aria-hidden="true"></i>
       </button>
+    </div>
     </div>
     <!-- File, Edit, View and Help now live in the native menu bar. -->
     <div class="top-bar-actions">
