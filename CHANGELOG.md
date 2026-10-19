@@ -1,3 +1,10 @@
+# [1.12.0](https://github.com/intentio-software/int-mind-map/compare/v1.11.1...v1.12.0) (2026-10-19)
+
+
+### Features
+
+* reach every open map, and a list of what the keyboard does ([db9e963](https://github.com/intentio-software/int-mind-map/commit/db9e96355859e7ed3c0b10cecf59a8a1a02f622d))
+
 ## [1.11.1](https://github.com/intentio-software/int-mind-map/compare/v1.11.0...v1.11.1) (2026-09-08)
 
 
