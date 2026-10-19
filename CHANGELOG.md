@@ -1,3 +1,10 @@
+## [1.12.1](https://github.com/intentio-software/int-mind-map/compare/v1.12.0...v1.12.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* make the map tabs reachable too ([aa9bdcb](https://github.com/intentio-software/int-mind-map/commit/aa9bdcbf5e12a55626e71e4ab2a114a03138e2cb))
+
 # [1.12.0](https://github.com/intentio-software/int-mind-map/compare/v1.11.1...v1.12.0) (2026-10-19)
 
 
